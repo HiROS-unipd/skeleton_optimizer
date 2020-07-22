@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<launch>
+
+  <arg name="node_required" default="false" />
+  <arg name="node_name"     default="node"  />
+
+  <!--**************************************-->
+  <!-- Hi-Ros Skeleton Optimizer Parameters -->
+  <!--**************************************-->
+  <arg name="input_topic_name"                          default=""      />
+  <arg name="output_topic_name"                         default=""      />
+  <arg name="define_links"                              default="true"  />
+  <arg name="number_of_frames_for_calibration"          default="100"   />
+  <arg name="max_calibration_coefficient_of_variation"  default="0.2"   />
+  <arg name="outlier_threshold"                         default="0.1"   />
+
+  <!--********************************-->
+  <!-- Hi-Ros Skeleton Optimizer Node -->
+  <!--********************************-->
+  <node pkg="hiros_skeleton_optimizer" type="hiros_skeleton_optimizer" ns="hiros/so" name="$(arg node_name)" output="screen" required="$(arg node_required)">
+    <rosparam if="$(arg define_links)" command="load" file="$(find hiros_skeleton_optimizer)/config/links_configuration.yaml"/>
+    <param name="node_name"                                type="str"    value="$(arg node_name)"                                />
+
+    <param name="input_topic_name"                         type="str"    value="$(arg input_topic_name)"                         />
+    <param name="output_topic_name"                        type="str"    value="$(arg output_topic_name)"                        />
+
+    <param name="define_links"                             type="bool"   value="$(arg define_links)"                             />
+    <param name="number_of_frames_for_calibration"         type="int"    value="$(arg number_of_frames_for_calibration)"         />
+    <param name="max_calibration_coefficient_of_variation" type="double" value="$(arg max_calibration_coefficient_of_variation)" />
+    <param name="outlier_threshold"                        type="double" value="$(arg outlier_threshold)"                        />
+  </node>
+
+</launch>
