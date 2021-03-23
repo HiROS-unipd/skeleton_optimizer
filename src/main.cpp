@@ -6,7 +6,7 @@
 
 int main(int argc, char* argv[])
 {
-  std::string node_name = "hiros_so";
+  std::string node_name = "hiros_skeleton_optimizer";
   ros::init(argc, argv, node_name);
 
   hiros::optimizer::Optimizer optimizer;
