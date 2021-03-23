@@ -166,7 +166,7 @@ bool hiros::optimizer::Optimizer::changeId(hiros_skeleton_optimizer::ChangeId::R
 
   if (std::find_if(m_tracks.skeletons.begin(),
                    m_tracks.skeletons.end(),
-                   [from_id](const hiros::skeletons::types::Skeleton& sk) { return sk.id == from_id; })
+                   [&from_id](const hiros::skeletons::types::Skeleton& sk) { return sk.id == from_id; })
       == m_tracks.skeletons.end()) {
     ROS_WARN_STREAM("Track ID " << from_id << " does not exist. Cannot change");
     return t_res.ok = false;
@@ -174,7 +174,7 @@ bool hiros::optimizer::Optimizer::changeId(hiros_skeleton_optimizer::ChangeId::R
 
   if (std::find_if(m_tracks.skeletons.begin(),
                    m_tracks.skeletons.end(),
-                   [to_id](const hiros::skeletons::types::Skeleton& sk) { return sk.id == to_id; })
+                   [&to_id](const hiros::skeletons::types::Skeleton& sk) { return sk.id == to_id; })
       != m_tracks.skeletons.end()) {
     ROS_WARN_STREAM("Track ID " << to_id << " already exists. Cannot change");
     return t_res.ok = false;
@@ -182,7 +182,7 @@ bool hiros::optimizer::Optimizer::changeId(hiros_skeleton_optimizer::ChangeId::R
 
   ROS_INFO_STREAM("Change ID from " << from_id << " to " << to_id);
 
-  auto it = std::find_if(m_ids_to_change.begin(), m_ids_to_change.end(), [from_id](const std::pair<int, int>& p) {
+  auto it = std::find_if(m_ids_to_change.begin(), m_ids_to_change.end(), [&from_id](const std::pair<int, int>& p) {
     return p.second == from_id;
   });
 
@@ -216,7 +216,7 @@ bool hiros::optimizer::Optimizer::calibrate(hiros_skeleton_optimizer::Calibrate:
   for (const auto& id : t_req.track_ids) {
     if (std::find_if(m_tracks.skeletons.begin(),
                      m_tracks.skeletons.end(),
-                     [id](const hiros::skeletons::types::Skeleton& sk) { return sk.id == id; })
+                     [&id](const hiros::skeletons::types::Skeleton& sk) { return sk.id == id; })
         == m_tracks.skeletons.end()) {
       ROS_WARN_STREAM("Track ID " << id << " does not exist. Cannot calibrate");
     }
