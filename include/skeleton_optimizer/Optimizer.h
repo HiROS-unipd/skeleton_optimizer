@@ -5,7 +5,7 @@
 #include <ros/ros.h>
 
 // Custom Ros Message dependencies
-#include "skeleton_msgs/SkeletonGroup.h"
+#include "skeleton_msgs/MarkerSkeletonGroup.h"
 
 // Custom External Packages dependencies
 #include "skeletons/types.h"
@@ -53,21 +53,21 @@ namespace hiros {
       bool calibrate(hiros_skeleton_optimizer::Calibrate::Request& t_req,
                      hiros_skeleton_optimizer::Calibrate::Response& t_res);
 
-      void callback(skeleton_msgs::SkeletonGroupConstPtr t_skeleton_group_msg);
+      void callback(skeleton_msgs::MarkerSkeletonGroupConstPtr t_skeleton_group_msg);
 
       void changeIds();
 
       void pushTracksToCalibrationBuffer();
       void calibrate();
-      void computeLinkLenghts(const std::vector<hiros::skeletons::types::Skeleton>& t_skeletons);
+      void computeLinkLenghts(const std::vector<hiros::skeletons::types::MarkerSkeleton>& t_skeletons);
       hiros::optimizer::utils::Link computeLinkLength(const hiros::optimizer::utils::Link& t_link,
-                                                      const int& t_skeleton_part_id,
-                                                      const hiros::skeletons::types::Skeleton& t_skeleton) const;
+                                                      const int& t_marker_group_id,
+                                                      const hiros::skeletons::types::MarkerSkeleton& t_skeleton) const;
 
       void fixOutliers();
       void fixOutlier(const hiros::optimizer::utils::Link& t_link,
-                      const int& t_skeleton_part_id,
-                      const hiros::skeletons::types::Skeleton& t_track);
+                      const int& t_marker_group_id,
+                      const hiros::skeletons::types::MarkerSkeleton& t_track);
       void optimize();
 
       bool hasCalibration(const int& t_track_id) const;
@@ -82,8 +82,8 @@ namespace hiros {
       ros::ServiceServer m_chande_id_srv;
       ros::Publisher m_out_msg_pub;
 
-      skeletons::types::SkeletonGroup m_prev_tracks;
-      skeletons::types::SkeletonGroup m_tracks;
+      skeletons::types::MarkerSkeletonGroup m_prev_tracks;
+      skeletons::types::MarkerSkeletonGroup m_tracks;
 
       std::map<int, int> m_ids_to_change;
 
@@ -91,16 +91,16 @@ namespace hiros {
       bool m_start_calibration;
       std::vector<int> m_ids_to_calibrate;
 
-      // map<track_id, vector<skeleton>>
-      std::map<int, std::vector<hiros::skeletons::types::Skeleton>> m_calibration_buffer;
+      // map<track_id, vector<marker_skeleton>>
+      std::map<int, std::vector<hiros::skeletons::types::MarkerSkeleton>> m_calibration_buffer;
 
-      // map<skeleton_part_id, vector<link>>
+      // map<marker_group_id, vector<link>>
       std::map<int, std::vector<utils::Link>> m_links;
 
-      // map<track_id, map<skeleton_part_id, map<link_id, link>>>
+      // map<track_id, map<marker_group_id, map<link_id, link>>>
       std::map<int, std::map<int, std::map<int, utils::Link>>> m_calibrated_links;
 
-      // map<track_id, map<skeleton_part_id, map<link_id, vector<link>>>>
+      // map<track_id, map<marker_group_id, map<link_id, vector<link>>>>
       std::map<int, std::map<int, std::map<int, std::vector<utils::Link>>>> m_link_lengths_vector;
 
       bool m_configured;

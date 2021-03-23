@@ -4,9 +4,6 @@
 // ROS dependencies
 #include <ros/ros.h>
 
-// Custom Ros Message dependencies
-#include "skeleton_msgs/SkeletonGroup.h"
-
 // Custom External Packages dependencies
 #include "skeletons/types.h"
 #include "skeletons/utils.h"
@@ -150,7 +147,7 @@ void hiros::optimizer::Optimizer::setupRosTopics()
   if (!image_quality.empty()) {
     out_msg_topic.insert(0, image_quality + "/");
   }
-  m_out_msg_pub = m_nh.advertise<skeleton_msgs::SkeletonGroup>(out_msg_topic, 1);
+  m_out_msg_pub = m_nh.advertise<skeleton_msgs::MarkerSkeletonGroup>(out_msg_topic, 1);
 }
 
 bool hiros::optimizer::Optimizer::changeId(hiros_skeleton_optimizer::ChangeId::Request& t_req,
@@ -164,18 +161,18 @@ bool hiros::optimizer::Optimizer::changeId(hiros_skeleton_optimizer::ChangeId::R
     return t_res.ok = false;
   }
 
-  if (std::find_if(m_tracks.skeletons.begin(),
-                   m_tracks.skeletons.end(),
-                   [&from_id](const hiros::skeletons::types::Skeleton& sk) { return sk.id == from_id; })
-      == m_tracks.skeletons.end()) {
+  if (std::find_if(m_tracks.marker_skeletons.begin(),
+                   m_tracks.marker_skeletons.end(),
+                   [&from_id](const hiros::skeletons::types::MarkerSkeleton& sk) { return sk.id == from_id; })
+      == m_tracks.marker_skeletons.end()) {
     ROS_WARN_STREAM("Track ID " << from_id << " does not exist. Cannot change");
     return t_res.ok = false;
   }
 
-  if (std::find_if(m_tracks.skeletons.begin(),
-                   m_tracks.skeletons.end(),
-                   [&to_id](const hiros::skeletons::types::Skeleton& sk) { return sk.id == to_id; })
-      != m_tracks.skeletons.end()) {
+  if (std::find_if(m_tracks.marker_skeletons.begin(),
+                   m_tracks.marker_skeletons.end(),
+                   [&to_id](const hiros::skeletons::types::MarkerSkeleton& sk) { return sk.id == to_id; })
+      != m_tracks.marker_skeletons.end()) {
     ROS_WARN_STREAM("Track ID " << to_id << " already exists. Cannot change");
     return t_res.ok = false;
   }
@@ -214,10 +211,10 @@ bool hiros::optimizer::Optimizer::calibrate(hiros_skeleton_optimizer::Calibrate:
   m_ids_to_calibrate.clear();
 
   for (const auto& id : t_req.track_ids) {
-    if (std::find_if(m_tracks.skeletons.begin(),
-                     m_tracks.skeletons.end(),
-                     [&id](const hiros::skeletons::types::Skeleton& sk) { return sk.id == id; })
-        == m_tracks.skeletons.end()) {
+    if (std::find_if(m_tracks.marker_skeletons.begin(),
+                     m_tracks.marker_skeletons.end(),
+                     [&id](const hiros::skeletons::types::MarkerSkeleton& sk) { return sk.id == id; })
+        == m_tracks.marker_skeletons.end()) {
       ROS_WARN_STREAM("Track ID " << id << " does not exist. Cannot calibrate");
     }
     else {
@@ -240,7 +237,7 @@ bool hiros::optimizer::Optimizer::calibrate(hiros_skeleton_optimizer::Calibrate:
   return t_res.ok = true;
 }
 
-void hiros::optimizer::Optimizer::callback(skeleton_msgs::SkeletonGroupConstPtr t_skeleton_group_msg)
+void hiros::optimizer::Optimizer::callback(skeleton_msgs::MarkerSkeletonGroupConstPtr t_skeleton_group_msg)
 {
   auto start = ros::Time::now();
 
@@ -273,7 +270,7 @@ void hiros::optimizer::Optimizer::callback(skeleton_msgs::SkeletonGroupConstPtr 
 
 void hiros::optimizer::Optimizer::changeIds()
 {
-  for (auto& sk : m_tracks.skeletons) {
+  for (auto& sk : m_tracks.marker_skeletons) {
     if (m_ids_to_change.find(sk.id) != m_ids_to_change.end()) {
       sk.id = m_ids_to_change.at(sk.id);
     }
@@ -282,20 +279,16 @@ void hiros::optimizer::Optimizer::changeIds()
 
 void hiros::optimizer::Optimizer::pushTracksToCalibrationBuffer()
 {
-  for (const auto& sk : m_tracks.skeletons) {
+  for (const auto& sk : m_tracks.marker_skeletons) {
     if (std::find(m_ids_to_calibrate.begin(), m_ids_to_calibrate.end(), sk.id) != m_ids_to_calibrate.end()) {
       m_calibration_buffer[sk.id].push_back(sk);
     }
   }
 
   unsigned long n_acquired_frames =
-    std::min_element(m_calibration_buffer.begin(),
-                     m_calibration_buffer.end(),
-                     [](std::map<int, std::vector<hiros::skeletons::types::Skeleton>>::const_reference s1,
-                        std::map<int, std::vector<hiros::skeletons::types::Skeleton>>::const_reference s2) {
-                       return s1.second.size() < s2.second.size();
-                     })
-      ->second.size();
+    std::min_element(m_calibration_buffer.begin(), m_calibration_buffer.end(), [](const auto& s1, const auto& s2) {
+      return s1.second.size() < s2.second.size();
+    })->second.size();
 
   if (n_acquired_frames >= static_cast<unsigned long>(m_params.number_of_frames_for_calibration)) {
     m_start_calibration = true;
@@ -312,11 +305,11 @@ void hiros::optimizer::Optimizer::calibrate()
 
     calibration_failed = false;
 
-    for (const auto& skp : m_link_lengths_vector.at(track.first)) {
-      for (const auto& link_vec : skp.second) {
+    for (const auto& mkg : m_link_lengths_vector.at(track.first)) {
+      for (const auto& link_vec : mkg.second) {
         utils::Link avg_link = computeAvgLink(coeff_of_variation, link_vec.second);
 
-        std::cout << "id: " << track.first << " skp: " << skp.first << " link: " << avg_link.id
+        std::cout << "id: " << track.first << " mkg: " << mkg.first << " link: " << avg_link.id
                   << "\tl: " << avg_link.length << "\t+- " << coeff_of_variation * avg_link.length
                   << "\tm conf: " << avg_link.confidence << " (" << avg_link.name << ")" << std::endl;
 
@@ -327,7 +320,7 @@ void hiros::optimizer::Optimizer::calibrate()
           break;
         }
 
-        m_calibrated_links[track.first][skp.first][avg_link.id] = avg_link;
+        m_calibrated_links[track.first][mkg.first][avg_link.id] = avg_link;
       }
 
       if (calibration_failed) {
@@ -341,15 +334,16 @@ void hiros::optimizer::Optimizer::calibrate()
   m_acquire_calibration_tracks = false;
 }
 
-void hiros::optimizer::Optimizer::computeLinkLenghts(const std::vector<hiros::skeletons::types::Skeleton>& t_skeletons)
+void hiros::optimizer::Optimizer::computeLinkLenghts(
+  const std::vector<hiros::skeletons::types::MarkerSkeleton>& t_skeletons)
 {
   for (const auto& sk : t_skeletons) {
-    for (const auto& skp : sk.skeleton_parts) {
-      if (m_links.find(skp.first) != m_links.end()) {
-        for (const auto& link : m_links.at(skp.first)) {
-          if (hiros::skeletons::utils::hasKeypoint(skp.second, link.parent_joint)
-              && hiros::skeletons::utils::hasKeypoint(skp.second, link.child_joint)) {
-            m_link_lengths_vector[sk.id][skp.first][link.id].push_back(computeLinkLength(link, skp.first, sk));
+    for (const auto& mkg : sk.marker_groups) {
+      if (m_links.find(mkg.first) != m_links.end()) {
+        for (const auto& link : m_links.at(mkg.first)) {
+          if (hiros::skeletons::utils::hasMarker(mkg.second, link.parent_joint)
+              && hiros::skeletons::utils::hasMarker(mkg.second, link.child_joint)) {
+            m_link_lengths_vector[sk.id][mkg.first][link.id].push_back(computeLinkLength(link, mkg.first, sk));
           }
         }
       }
@@ -359,35 +353,34 @@ void hiros::optimizer::Optimizer::computeLinkLenghts(const std::vector<hiros::sk
 
 hiros::optimizer::utils::Link
 hiros::optimizer::Optimizer::computeLinkLength(const hiros::optimizer::utils::Link& t_link,
-                                               const int& t_skeleton_part_id,
-                                               const hiros::skeletons::types::Skeleton& t_skeleton) const
+                                               const int& t_marker_group_id,
+                                               const hiros::skeletons::types::MarkerSkeleton& t_skeleton) const
 {
   utils::Link res = t_link;
   res.length = hiros::skeletons::utils::distance(
-    t_skeleton.skeleton_parts.at(t_skeleton_part_id).keypoints.at(t_link.parent_joint).point.position,
-    t_skeleton.skeleton_parts.at(t_skeleton_part_id).keypoints.at(t_link.child_joint).point.position);
-  res.confidence =
-    std::min(t_skeleton.skeleton_parts.at(t_skeleton_part_id).keypoints.at(t_link.parent_joint).confidence,
-             t_skeleton.skeleton_parts.at(t_skeleton_part_id).keypoints.at(t_link.child_joint).confidence);
+    t_skeleton.marker_groups.at(t_marker_group_id).markers.at(t_link.parent_joint).point.position,
+    t_skeleton.marker_groups.at(t_marker_group_id).markers.at(t_link.child_joint).point.position);
+  res.confidence = std::min(t_skeleton.marker_groups.at(t_marker_group_id).markers.at(t_link.parent_joint).confidence,
+                            t_skeleton.marker_groups.at(t_marker_group_id).markers.at(t_link.child_joint).confidence);
   return res;
 }
 
 void hiros::optimizer::Optimizer::fixOutliers()
 {
-  if (m_prev_tracks.skeletons.empty()) {
+  if (m_prev_tracks.marker_skeletons.empty()) {
     return;
   }
 
   auto tmp_tracks = m_tracks;
 
-  for (const auto& track : tmp_tracks.skeletons) {
+  for (const auto& track : tmp_tracks.marker_skeletons) {
     if (m_calibrated_links.find(track.id) != m_calibrated_links.end()) {
-      for (const auto& skp : track.skeleton_parts) {
-        if (m_calibrated_links.at(track.id).find(skp.first) != m_calibrated_links.at(track.id).end()) {
-          for (const auto& link : m_calibrated_links.at(track.id).at(skp.first)) {
-            if (hiros::skeletons::utils::hasKeypoint(skp.second, link.second.parent_joint)
-                && hiros::skeletons::utils::hasKeypoint(skp.second, link.second.child_joint)) {
-              fixOutlier(link.second, skp.first, track);
+      for (const auto& mkg : track.marker_groups) {
+        if (m_calibrated_links.at(track.id).find(mkg.first) != m_calibrated_links.at(track.id).end()) {
+          for (const auto& link : m_calibrated_links.at(track.id).at(mkg.first)) {
+            if (hiros::skeletons::utils::hasMarker(mkg.second, link.second.parent_joint)
+                && hiros::skeletons::utils::hasMarker(mkg.second, link.second.child_joint)) {
+              fixOutlier(link.second, mkg.first, track);
             }
           }
         }
@@ -397,37 +390,37 @@ void hiros::optimizer::Optimizer::fixOutliers()
 }
 
 void hiros::optimizer::Optimizer::fixOutlier(const hiros::optimizer::utils::Link& t_link,
-                                             const int& t_skeleton_part_id,
-                                             const hiros::skeletons::types::Skeleton& t_track)
+                                             const int& t_marker_group_id,
+                                             const hiros::skeletons::types::MarkerSkeleton& t_track)
 {
 
-  auto prev_track = hiros::skeletons::utils::getSkeleton(m_prev_tracks, t_track.id);
-  auto curr_track = hiros::skeletons::utils::getSkeleton(m_tracks, t_track.id);
+  auto prev_track = hiros::skeletons::utils::getMarkerSkeleton(m_prev_tracks, t_track.id);
+  auto curr_track = hiros::skeletons::utils::getMarkerSkeleton(m_tracks, t_track.id);
 
   double length_error =
     std::abs(hiros::skeletons::utils::distance(
-               t_track.skeleton_parts.at(t_skeleton_part_id).keypoints.at(t_link.parent_joint).point.position,
-               t_track.skeleton_parts.at(t_skeleton_part_id).keypoints.at(t_link.child_joint).point.position)
+               t_track.marker_groups.at(t_marker_group_id).markers.at(t_link.parent_joint).point.position,
+               t_track.marker_groups.at(t_marker_group_id).markers.at(t_link.child_joint).point.position)
              - t_link.length)
     / t_link.length;
 
   if (length_error > m_params.outlier_threshold) {
     if (prev_track != nullptr
-        && hiros::skeletons::utils::hasKeypoint(*prev_track.get(), t_skeleton_part_id, t_link.child_joint)) {
-      if (hiros::skeletons::utils::hasKeypoint(*curr_track.get(), t_skeleton_part_id, t_link.child_joint)) {
-        curr_track->skeleton_parts.at(t_skeleton_part_id).keypoints.at(t_link.child_joint) =
-          prev_track->skeleton_parts.at(t_skeleton_part_id).keypoints.at(t_link.child_joint);
+        && hiros::skeletons::utils::hasMarker(*prev_track.get(), t_marker_group_id, t_link.child_joint)) {
+      if (hiros::skeletons::utils::hasMarker(*curr_track.get(), t_marker_group_id, t_link.child_joint)) {
+        curr_track->marker_groups.at(t_marker_group_id).markers.at(t_link.child_joint) =
+          prev_track->marker_groups.at(t_marker_group_id).markers.at(t_link.child_joint);
       }
     }
-    else if (hiros::skeletons::utils::hasKeypoint(*curr_track.get(), t_skeleton_part_id, t_link.child_joint)) {
-      curr_track->skeleton_parts.at(t_skeleton_part_id).keypoints.erase(t_link.child_joint);
+    else if (hiros::skeletons::utils::hasMarker(*curr_track.get(), t_marker_group_id, t_link.child_joint)) {
+      curr_track->marker_groups.at(t_marker_group_id).markers.erase(t_link.child_joint);
     }
   }
 }
 
 void hiros::optimizer::Optimizer::optimize()
 {
-  for (auto& track : m_tracks.skeletons) {
+  for (auto& track : m_tracks.marker_skeletons) {
     if (hasCalibration(track.id)) {
       ceres::Problem problem;
       ceres::Solver::Options options;
@@ -439,24 +432,24 @@ void hiros::optimizer::Optimizer::optimize()
       // options.num_threads = 4;
       ceres::Solver::Summary summary;
 
-      for (auto& skp : track.skeleton_parts) {
-        if (m_calibrated_links.at(track.id).find(skp.first) != m_calibrated_links.at(track.id).end()) {
-          for (const auto& link : m_links.at(skp.first)) {
-            if (hiros::skeletons::utils::hasKeypoint(skp.second, link.parent_joint)
-                && hiros::skeletons::utils::hasKeypoint(skp.second, link.child_joint)) {
+      for (auto& mkg : track.marker_groups) {
+        if (m_calibrated_links.at(track.id).find(mkg.first) != m_calibrated_links.at(track.id).end()) {
+          for (const auto& link : m_links.at(mkg.first)) {
+            if (hiros::skeletons::utils::hasMarker(mkg.second, link.parent_joint)
+                && hiros::skeletons::utils::hasMarker(mkg.second, link.child_joint)) {
               ceres::CostFunction* cost_function = new ceres::AutoDiffCostFunction<CostFunction, 1, 1, 1, 1, 1, 1, 1>(
                 new CostFunction(m_params.outlier_threshold,
-                                 skp.second.keypoints.at(link.parent_joint).point.position,
-                                 skp.second.keypoints.at(link.child_joint).point.position,
-                                 m_calibrated_links.at(track.id).at(skp.first).at(link.id)));
+                                 mkg.second.markers.at(link.parent_joint).point.position,
+                                 mkg.second.markers.at(link.child_joint).point.position,
+                                 m_calibrated_links.at(track.id).at(mkg.first).at(link.id)));
               problem.AddResidualBlock(cost_function,
                                        nullptr,
-                                       &skp.second.keypoints.at(link.parent_joint).point.position.x,
-                                       &skp.second.keypoints.at(link.parent_joint).point.position.y,
-                                       &skp.second.keypoints.at(link.parent_joint).point.position.z,
-                                       &skp.second.keypoints.at(link.child_joint).point.position.x,
-                                       &skp.second.keypoints.at(link.child_joint).point.position.y,
-                                       &skp.second.keypoints.at(link.child_joint).point.position.z);
+                                       &mkg.second.markers.at(link.parent_joint).point.position.x,
+                                       &mkg.second.markers.at(link.parent_joint).point.position.y,
+                                       &mkg.second.markers.at(link.parent_joint).point.position.z,
+                                       &mkg.second.markers.at(link.child_joint).point.position.x,
+                                       &mkg.second.markers.at(link.child_joint).point.position.y,
+                                       &mkg.second.markers.at(link.child_joint).point.position.z);
             }
           }
         }
