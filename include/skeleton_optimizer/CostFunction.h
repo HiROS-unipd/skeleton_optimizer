@@ -44,8 +44,8 @@ namespace hiros {
         double joint_position_weight = 1 - link_length_weight;
 
         auto joint_position_distance =
-          (pow(x0[0] - m_joint_0.x, 2) + pow(y0[0] - m_joint_0.y, 2) + pow(z0[0] - m_joint_0.z, 2)
-           + pow(x1[0] - m_joint_1.x, 2) + pow(y1[0] - m_joint_1.y, 2) + pow(z1[0] - m_joint_1.z, 2));
+          (pow(x0[0] - m_joint_0.x(), 2) + pow(y0[0] - m_joint_0.y(), 2) + pow(z0[0] - m_joint_0.z(), 2)
+           + pow(x1[0] - m_joint_1.x(), 2) + pow(y1[0] - m_joint_1.y(), 2) + pow(z1[0] - m_joint_1.z(), 2));
 
         auto link_length_distance =
           abs((pow(x0[0] - x1[0], 2) + pow(y0[0] - y1[0], 2) + pow(z0[0] - z1[0], 2) - pow(m_link.length, 2)));

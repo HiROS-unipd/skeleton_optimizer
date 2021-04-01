@@ -6,7 +6,7 @@ add_compile_options(-std=c++14)
 
 # Find catkin macros and libraries if COMPONENTS list like find_package(catkin
 # REQUIRED COMPONENTS xyz) is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS roscpp message_generation std_msgs skeleton_msgs)
+find_package(catkin REQUIRED COMPONENTS roscpp message_generation std_msgs hiros_skeleton_msgs)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -24,7 +24,7 @@ add_service_files(FILES Calibrate.srv ChangeId.srv)
 generate_messages(DEPENDENCIES std_msgs)
 
 # Declare the package to be exported and made available to ros
-catkin_package(CATKIN_DEPENDS message_runtime std_msgs skeleton_msgs)
+catkin_package(CATKIN_DEPENDS message_runtime std_msgs hiros_skeleton_msgs)
 
 # ##############################################################################
 # Build ##

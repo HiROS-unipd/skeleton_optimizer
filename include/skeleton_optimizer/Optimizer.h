@@ -5,7 +5,7 @@
 #include <ros/ros.h>
 
 // Custom Ros Message dependencies
-#include "skeleton_msgs/MarkerSkeletonGroup.h"
+#include "hiros_skeleton_msgs/MarkerSkeletonGroup.h"
 
 // Custom External Packages dependencies
 #include "skeletons/types.h"
@@ -53,7 +53,7 @@ namespace hiros {
       bool calibrate(hiros_skeleton_optimizer::Calibrate::Request& t_req,
                      hiros_skeleton_optimizer::Calibrate::Response& t_res);
 
-      void callback(skeleton_msgs::MarkerSkeletonGroupConstPtr t_skeleton_group_msg);
+      void callback(hiros_skeleton_msgs::MarkerSkeletonGroupConstPtr t_skeleton_group_msg);
 
       void changeIds();
 

@@ -147,7 +147,7 @@ void hiros::optimizer::Optimizer::setupRosTopics()
   if (!image_quality.empty()) {
     out_msg_topic.insert(0, image_quality + "/");
   }
-  m_out_msg_pub = m_nh.advertise<skeleton_msgs::MarkerSkeletonGroup>(out_msg_topic, 1);
+  m_out_msg_pub = m_nh.advertise<hiros_skeleton_msgs::MarkerSkeletonGroup>(out_msg_topic, 1);
 }
 
 bool hiros::optimizer::Optimizer::changeId(hiros_skeleton_optimizer::ChangeId::Request& t_req,
@@ -237,7 +237,7 @@ bool hiros::optimizer::Optimizer::calibrate(hiros_skeleton_optimizer::Calibrate:
   return t_res.ok = true;
 }
 
-void hiros::optimizer::Optimizer::callback(skeleton_msgs::MarkerSkeletonGroupConstPtr t_skeleton_group_msg)
+void hiros::optimizer::Optimizer::callback(hiros_skeleton_msgs::MarkerSkeletonGroupConstPtr t_skeleton_group_msg)
 {
   auto start = ros::Time::now();
 
@@ -442,14 +442,15 @@ void hiros::optimizer::Optimizer::optimize()
                                  mkg.second.markers.at(link.parent_joint).point.position,
                                  mkg.second.markers.at(link.child_joint).point.position,
                                  m_calibrated_links.at(track.id).at(mkg.first).at(link.id)));
-              problem.AddResidualBlock(cost_function,
-                                       nullptr,
-                                       &mkg.second.markers.at(link.parent_joint).point.position.x,
-                                       &mkg.second.markers.at(link.parent_joint).point.position.y,
-                                       &mkg.second.markers.at(link.parent_joint).point.position.z,
-                                       &mkg.second.markers.at(link.child_joint).point.position.x,
-                                       &mkg.second.markers.at(link.child_joint).point.position.y,
-                                       &mkg.second.markers.at(link.child_joint).point.position.z);
+              problem.AddResidualBlock(
+                cost_function,
+                nullptr,
+                const_cast<double*>(&mkg.second.markers.at(link.parent_joint).point.position.x()),
+                const_cast<double*>(&mkg.second.markers.at(link.parent_joint).point.position.y()),
+                const_cast<double*>(&mkg.second.markers.at(link.parent_joint).point.position.z()),
+                const_cast<double*>(&mkg.second.markers.at(link.child_joint).point.position.x()),
+                const_cast<double*>(&mkg.second.markers.at(link.child_joint).point.position.y()),
+                const_cast<double*>(&mkg.second.markers.at(link.child_joint).point.position.z()));
             }
           }
         }
