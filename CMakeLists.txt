@@ -43,7 +43,7 @@ add_custom_target(additional_files_${PROJECT_NAME} SOURCES ${FILES_LIST})
 # Declare a C++ executable With catkin_make all packages are built within a
 # single CMake context The recommended prefix ensures that target names across
 # packages don't collide add_executable(${PROJECT_NAME}_node
-add_executable(${PROJECT_NAME}_node src/main.cpp src/CostFunction.cpp src/Optimizer.cpp src/utils.cpp)
+add_executable(${PROJECT_NAME}_node src/main.cpp src/CostFunction.cpp src/Optimizer.cpp)
 
 # Rename C++ executable without prefix The above recommended prefix causes long
 # target names, the following renames the target back to the shorter version for

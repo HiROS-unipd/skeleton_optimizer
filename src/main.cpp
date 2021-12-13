@@ -12,7 +12,5 @@ int main(int argc, char* argv[])
   hiros::optimizer::Optimizer optimizer;
   optimizer.start();
 
-  ros::spin();
-
-  return 0;
+  exit(EXIT_SUCCESS);
 }
