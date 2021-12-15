@@ -36,6 +36,10 @@ namespace hiros {
       int number_of_frames_for_calibration;
       double max_calibration_coefficient_of_variation;
       double outlier_threshold;
+
+      bool export_calibration;
+      bool load_calibration;
+      std::string calibration_file;
     };
 
     class Optimizer
@@ -49,6 +53,15 @@ namespace hiros {
 
     private:
       void stop();
+
+      void parseXml(const XmlRpc::XmlRpcValue& t_xml);
+      void checkXmlRpcParam(const std::string& t_tag,
+                            const XmlRpc::XmlRpcValue& t_node,
+                            const XmlRpc::XmlRpcValue::Type t_type) const;
+      bool checkXmlRpcSanity(const std::string& t_tag,
+                             const XmlRpc::XmlRpcValue& t_node,
+                             const XmlRpc::XmlRpcValue::Type t_type) const;
+
       void setupRosTopics();
 
       bool changeId(hiros_skeleton_optimizer::ChangeId::Request& t_req,
@@ -62,6 +75,7 @@ namespace hiros {
 
       void pushTracksToCalibrationBuffer();
       void calibrate();
+      void exportCalibration() const;
 
       // map<link_id, vector<link_info>>
       std::map<int, std::vector<LinkInfo>>

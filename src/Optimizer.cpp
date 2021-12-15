@@ -1,3 +1,6 @@
+// Standard dependencies
+#include <fstream>
+
 // Ceres dependencies
 #include "ceres/ceres.h"
 
@@ -29,6 +32,22 @@ void hiros::optimizer::Optimizer::configure()
   m_nh.getParam("number_of_frames_for_calibration", m_params.number_of_frames_for_calibration);
   m_nh.getParam("max_calibration_coefficient_of_variation", m_params.max_calibration_coefficient_of_variation);
   m_nh.getParam("outlier_threshold", m_params.outlier_threshold);
+
+  m_nh.getParam("export_calibration", m_params.export_calibration);
+  m_nh.getParam("load_calibration", m_params.load_calibration);
+  m_nh.getParam("calibration_file", m_params.calibration_file);
+
+  if (m_params.load_calibration) {
+    XmlRpc::XmlRpcValue calib_xml;
+
+    if (!m_nh.getParam("tracks", calib_xml)) {
+      ROS_WARN_STREAM("Hi-ROS Skeleton Optimizer Warning: calibration file '" << m_params.calibration_file
+                                                                              << "' not found");
+    }
+    else {
+      parseXml(calib_xml);
+    }
+  }
 
   if (m_params.input_topic_name.empty() || m_params.output_topic_name.empty()) {
     ROS_FATAL_STREAM("Hi-ROS Skeleton Optimizer Error: Required topics configuration not provided");
@@ -94,6 +113,58 @@ void hiros::optimizer::Optimizer::stop()
 
   ROS_INFO_STREAM(BASH_MSG_GREEN << "Hi-ROS Skeleton Optimizer... STOPPED" << BASH_MSG_RESET);
   ros::shutdown();
+}
+
+void hiros::optimizer::Optimizer::parseXml(const XmlRpc::XmlRpcValue& t_xml)
+{
+  for (int track_idx = 0; track_idx < t_xml.size(); ++track_idx) {
+    checkXmlRpcParam("track_id", t_xml[track_idx], XmlRpc::XmlRpcValue::TypeInt);
+    checkXmlRpcParam("links", t_xml[track_idx], XmlRpc::XmlRpcValue::TypeArray);
+
+    int track_id = static_cast<int>(t_xml[track_idx]["track_id"]);
+    for (int link_idx = 0; link_idx < t_xml[track_idx]["links"].size(); ++link_idx) {
+      checkXmlRpcParam("link_id", t_xml[track_idx]["links"][link_idx], XmlRpc::XmlRpcValue::TypeInt);
+      checkXmlRpcParam("link_confidence", t_xml[track_idx]["links"][link_idx], XmlRpc::XmlRpcValue::TypeDouble);
+      checkXmlRpcParam("link_length", t_xml[track_idx]["links"][link_idx], XmlRpc::XmlRpcValue::TypeDouble);
+
+      int link_id = static_cast<int>(t_xml[track_idx]["links"][link_idx]["link_id"]);
+      double link_confidence = static_cast<double>(t_xml[track_idx]["links"][link_idx]["link_confidence"]);
+      double link_length = static_cast<double>(t_xml[track_idx]["links"][link_idx]["link_length"]);
+
+      m_calibrated_links[track_id][link_id] = {link_confidence, link_length};
+    }
+  }
+}
+
+void hiros::optimizer::Optimizer::checkXmlRpcParam(const std::string& t_tag,
+                                                   const XmlRpc::XmlRpcValue& t_node,
+                                                   const XmlRpc::XmlRpcValue::Type t_type) const
+{
+  if (!checkXmlRpcSanity(t_tag, t_node, t_type)) {
+    ROS_FATAL_STREAM("Hi-ROS Skeleton Optimizer Error: " << t_tag << " not found");
+    ros::shutdown();
+    exit(EXIT_FAILURE);
+  }
+}
+
+bool hiros::optimizer::Optimizer::checkXmlRpcSanity(const std::string& t_tag,
+                                                    const XmlRpc::XmlRpcValue& t_node,
+                                                    const XmlRpc::XmlRpcValue::Type t_type) const
+{
+  if (!t_node.hasMember(t_tag)) {
+    std::cerr << "Tag: " << t_tag << ". Not found" << std::endl;
+    return false;
+  }
+  if (t_node[t_tag].getType() != t_type) {
+    std::cerr << "Tag: " << t_tag << ". Type different from expected" << std::endl;
+    return false;
+  }
+  if (!t_node[t_tag].valid()) {
+    std::cerr << "Tag: " << t_tag << ". Empty value not allowed." << std::endl;
+    return false;
+  }
+
+  return true;
 }
 
 void hiros::optimizer::Optimizer::setupRosTopics()
@@ -201,6 +272,7 @@ void hiros::optimizer::Optimizer::callback(const hiros_skeleton_msgs::SkeletonGr
 
     if (m_start_calibration) {
       calibrate();
+      exportCalibration();
     }
   }
 
@@ -271,6 +343,31 @@ void hiros::optimizer::Optimizer::calibrate()
   m_calibration_buffer.clear();
   m_start_calibration = false;
   m_acquire_calibration_tracks = false;
+}
+
+void hiros::optimizer::Optimizer::exportCalibration() const
+{
+  if (!m_params.export_calibration) {
+    return;
+  }
+
+  std::ofstream file;
+
+  file.open(m_params.calibration_file, std::ios_base::out);
+  file << "tracks:" << std::endl;
+
+  for (const auto& track : m_calibrated_links) {
+    file << "  - track_id: " << track.first << std::endl;
+    file << "    links:" << std::endl;
+
+    for (const auto& link : track.second) {
+      file << "    - link_id: " << link.first << std::endl;
+      file << "      link_confidence: " << link.second.confidence << std::endl;
+      file << "      link_length: " << link.second.length << std::endl;
+    }
+  }
+
+  file.close();
 }
 
 std::map<int, std::vector<hiros::optimizer::LinkInfo>>

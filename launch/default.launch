@@ -7,11 +7,16 @@
   <!--**************************************-->
   <!-- Hi-Ros Skeleton Optimizer Parameters -->
   <!--**************************************-->
-  <arg name="input_topic_name"                          default=""    />
-  <arg name="output_topic_name"                         default=""    />
-  <arg name="number_of_frames_for_calibration"          default="100" />
-  <arg name="max_calibration_coefficient_of_variation"  default="0.2" />
-  <arg name="outlier_threshold"                         default="0.1" />
+  <arg name="input_topic_name"                          default=""     />
+  <arg name="output_topic_name"                         default=""     />
+
+  <arg name="number_of_frames_for_calibration"          default="100"  />
+  <arg name="max_calibration_coefficient_of_variation"  default="0.2"  />
+  <arg name="outlier_threshold"                         default="0.1"  />
+
+  <arg name="export_calibration"                       default="false" />
+  <arg name="load_calibration"                         default="false" />
+  <arg name="calibration_file"                         default="$(find hiros_skeleton_optimizer)/config/calib_sbj01.yaml" />
 
   <!--********************************-->
   <!-- Hi-Ros Skeleton Optimizer Node -->
@@ -25,6 +30,11 @@
     <param name="number_of_frames_for_calibration"         type="int"    value="$(arg number_of_frames_for_calibration)"         />
     <param name="max_calibration_coefficient_of_variation" type="double" value="$(arg max_calibration_coefficient_of_variation)" />
     <param name="outlier_threshold"                        type="double" value="$(arg outlier_threshold)"                        />
+
+    <param name="export_calibration"                       type="bool" value="$(arg export_calibration)"                         />
+    <param name="load_calibration"                         type="bool" value="$(arg load_calibration)"                           />
+    <param name="calibration_file"                         type="str"  value="$(arg calibration_file)"                           />
+    <rosparam if="$(arg load_calibration)" command="load" file="$(arg calibration_file)" />
   </node>
 
 </launch>

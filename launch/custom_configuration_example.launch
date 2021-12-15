@@ -16,6 +16,9 @@
     <arg name="number_of_frames_for_calibration"         value="50"               />
     <arg name="max_calibration_coefficient_of_variation" value="0.1"              />
     <arg name="outlier_threshold"                        value="0.2"              />
+
+    <arg name="export_calibration"                       value="true"             />
+    <arg name="calibration_file"                         value="$(find hiros_skeleton_optimizer)/config/test_calib.yaml" />
   </include>
 
 </launch>
