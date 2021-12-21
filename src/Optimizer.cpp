@@ -493,6 +493,7 @@ void hiros::optimizer::Optimizer::optimize()
       }
 
       ceres::Solve(options, &problem, &summary);
+      alignLinkOrientations();
     }
   }
 }
@@ -500,4 +501,63 @@ void hiros::optimizer::Optimizer::optimize()
 bool hiros::optimizer::Optimizer::hasCalibration(const int& t_track_id) const
 {
   return m_calibrated_links.find(t_track_id) != m_calibrated_links.end();
+}
+
+void hiros::optimizer::Optimizer::alignLinkOrientations()
+{
+  for (auto& track : m_tracks.skeletons) {
+    for (auto& link : track.links) {
+      alignLinkOrientation(track, link.id);
+    }
+  }
+}
+
+void hiros::optimizer::Optimizer::alignLinkOrientation(hiros::skeletons::types::Skeleton& t_sk,
+                                                       const int& t_lk_id) const
+{
+  if (!t_sk.hasLink(t_lk_id)) {
+    return;
+  }
+
+  auto& link = t_sk.getLink(t_lk_id);
+
+  if (skeletons::utils::isNaN(link.center.pose.orientation) || !t_sk.hasMarker(link.parent_marker)
+      || !t_sk.hasMarker(link.child_marker)) {
+    return;
+  }
+
+  auto link_axis =
+    (t_sk.getMarker(link.parent_marker).center.pose.position - t_sk.getMarker(link.child_marker).center.pose.position)
+      .normalized();
+
+  auto closest_cartesian_axis =
+    closestCartesianAxis(tf2::quatRotate(link.center.pose.orientation.inverse(), link_axis).normalized());
+
+  // Axis of the link orientation SoR to be aligned to the link axis
+  auto quat_axis = tf2::quatRotate(link.center.pose.orientation, closest_cartesian_axis).normalized();
+
+  auto rot_axis = quat_axis.cross(link_axis).normalized();
+  auto rot_angle = acos(std::min(std::max(-1., quat_axis.dot(link_axis)), 1.));
+  // Rotation to align the link orientation to the link axis
+  auto rot_quat = tf2::Quaternion(rot_axis, rot_angle);
+
+  link.center.pose.orientation = rot_quat * link.center.pose.orientation;
+}
+
+tf2::Vector3 hiros::optimizer::Optimizer::closestCartesianAxis(const tf2::Vector3& t_vec) const
+{
+  auto closest_axis_idx = t_vec.closestAxis(); // 0: x, 1: y, 2: z
+
+  tf2::Vector3DoubleData signs;
+  signs.m_floats[0] = t_vec.x() >= 0 ? 1 : -1;
+  signs.m_floats[1] = t_vec.y() >= 0 ? 1 : -1;
+  signs.m_floats[2] = t_vec.z() >= 0 ? 1 : -1;
+
+  tf2::Vector3DoubleData closest_axis_serialized{0, 0, 0};
+  closest_axis_serialized.m_floats[closest_axis_idx] = signs.m_floats[closest_axis_idx];
+
+  tf2::Vector3 closest_axis;
+  closest_axis.deSerialize(closest_axis_serialized);
+
+  return closest_axis;
 }

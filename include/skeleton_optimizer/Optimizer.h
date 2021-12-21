@@ -87,6 +87,9 @@ namespace hiros {
       void optimize();
 
       bool hasCalibration(const int& t_track_id) const;
+      void alignLinkOrientations();
+      void alignLinkOrientation(hiros::skeletons::types::Skeleton& t_sk, const int& t_lk_id) const;
+      tf2::Vector3 closestCartesianAxis(const tf2::Vector3& t_vec) const;
 
       ros::NodeHandle m_nh{"~"};
 
