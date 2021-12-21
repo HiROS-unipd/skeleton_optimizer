@@ -477,11 +477,9 @@ void hiros::optimizer::Optimizer::optimize()
           auto& parent_marker = track.getMarker(link.parent_marker);
           auto& child_marker = track.getMarker(link.child_marker);
 
-          ceres::CostFunction* cost_function = new ceres::AutoDiffCostFunction<CostFunction, 1, 1, 1, 1, 1, 1, 1>(
-            new CostFunction(m_params.outlier_threshold,
-                             parent_marker,
-                             child_marker,
-                             m_calibrated_links.at(track.id).at(link.id).length));
+          ceres::CostFunction* cost_function =
+            new ceres::AutoDiffCostFunction<CostFunction, 1, 1, 1, 1, 1, 1, 1>(new CostFunction(
+              m_params.outlier_threshold, m_calibrated_links.at(track.id).at(link.id).length, track, link));
 
           problem.AddResidualBlock(cost_function,
                                    nullptr,
