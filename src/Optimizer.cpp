@@ -72,6 +72,8 @@ void hiros::optimizer::Optimizer::configure()
     ros::shutdown();
   }
 
+  setupRosTopics();
+
   m_configured = true;
 
   ROS_INFO_STREAM(BASH_MSG_GREEN << "Hi-ROS Skeleton Optimizer... CONFIGURED" << BASH_MSG_RESET);
@@ -84,8 +86,6 @@ void hiros::optimizer::Optimizer::start()
   if (!m_configured) {
     configure();
   }
-
-  setupRosTopics();
 
   ROS_INFO_STREAM(BASH_MSG_GREEN << "Hi-ROS Skeleton Optimizer... RUNNING" << BASH_MSG_RESET);
   ros::spin();
