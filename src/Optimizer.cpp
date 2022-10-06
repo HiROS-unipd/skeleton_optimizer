@@ -4,335 +4,170 @@
 // Ceres dependencies
 #include "ceres/ceres.h"
 
-// ROS dependencies
-#include <ros/ros.h>
-
-// Custom External Packages dependencies
-#include "skeletons/types.h"
+// Custom external packages dependencies
+#include "skeleton_tracker/utils.h"
 #include "skeletons/utils.h"
 
 // Internal dependencies
 #include "skeleton_optimizer/CostFunction.h"
 #include "skeleton_optimizer/Optimizer.h"
 
-void hiros::optimizer::Optimizer::configure()
-{
-  ROS_INFO_STREAM("Hi-ROS Skeleton Optimizer... Configuring");
+hiros::skeletons::Optimizer::Optimizer() : Node("hiros_skeleton_optimizer") {
+  start();
+}
 
-  if (m_configured) {
-    m_configured = false;
-    stop();
-  }
+hiros::skeletons::Optimizer::~Optimizer() { stop(); }
 
-  m_nh.getParam("node_name", m_params.node_name);
+void hiros::skeletons::Optimizer::start() {
+  configure();
 
-  m_nh.getParam("input_topic_name", m_params.input_topic_name);
-  m_nh.getParam("output_topic_name", m_params.output_topic_name);
+  RCLCPP_INFO_STREAM(get_logger(), BASH_MSG_GREEN
+                                       << "Hi-ROS Skeleton Optimizer... RUNNING"
+                                       << BASH_MSG_RESET);
+}
 
-  m_nh.getParam("number_of_frames_for_calibration", m_params.number_of_frames_for_calibration);
-  m_nh.getParam("max_calibration_coefficient_of_variation", m_params.max_calibration_coefficient_of_variation);
-  m_nh.getParam("outlier_threshold", m_params.outlier_threshold);
+void hiros::skeletons::Optimizer::stop() const {
+  RCLCPP_INFO_STREAM(get_logger(), BASH_MSG_GREEN
+                                       << "Hi-ROS Skeleton Optimizer... STOPPED"
+                                       << BASH_MSG_RESET);
 
-  m_nh.getParam("export_calibration", m_params.export_calibration);
-  m_nh.getParam("load_calibration", m_params.load_calibration);
-  m_nh.getParam("calibration_file", m_params.calibration_file);
+  rclcpp::shutdown();
+}
 
-  if (m_params.load_calibration) {
-    XmlRpc::XmlRpcValue calib_xml;
-
-    if (!m_nh.getParam("tracks", calib_xml)) {
-      ROS_WARN_STREAM("Hi-ROS Skeleton Optimizer Warning: calibration file '" << m_params.calibration_file
-                                                                              << "' not found");
-    }
-    else {
-      parseXml(calib_xml);
-    }
-  }
-
-  if (m_params.input_topic_name.empty() || m_params.output_topic_name.empty()) {
-    ROS_FATAL_STREAM("Hi-ROS Skeleton Optimizer Error: Required topics configuration not provided");
-    ros::shutdown();
-  }
-
-  if (m_params.number_of_frames_for_calibration <= 0) {
-    ROS_FATAL_STREAM(
-      "Hi-ROS Skeleton Optimizer Error: The number of frames to acquire for the calibration must be greater than 0");
-    ros::shutdown();
-  }
-
-  if (m_params.max_calibration_coefficient_of_variation <= 0.0) {
-    ROS_FATAL_STREAM("Hi-ROS Skeleton Optimizer Error: The maximum coefficient of variation to consider a calibration "
-                     "valid must be greater than 0");
-    ros::shutdown();
-  }
-
-  if (m_params.outlier_threshold <= 0.0) {
-    ROS_FATAL_STREAM(
-      "Hi-ROS Skeleton Optimizer Error: The threshold to consider a joint an outlier must be greater than 0");
-    ros::shutdown();
-  }
-
+void hiros::skeletons::Optimizer::configure() {
+  getParams();
   setupRosTopics();
-
-  m_configured = true;
-
-  ROS_INFO_STREAM(BASH_MSG_GREEN << "Hi-ROS Skeleton Optimizer... CONFIGURED" << BASH_MSG_RESET);
 }
 
-void hiros::optimizer::Optimizer::start()
-{
-  ROS_INFO_STREAM("Hi-ROS Skeleton Optimizer... Starting");
+void hiros::skeletons::Optimizer::getParams() {
+  getParam("input_topic", params_.input_topic);
+  getParam("output_topic", params_.output_topic);
+  getParam("number_of_frames_for_calibration",
+           params_.number_of_frames_for_calibration);
+  getParam("max_calibration_coefficient_of_variation",
+           params_.max_calibration_coefficient_of_variation);
+  getParam("outlier_threshold", params_.outlier_threshold);
+  getParam("export_calibration", params_.export_calibration);
+  getParam("load_calibration", params_.load_calibration);
+  getParam("calibration_file", params_.calibration_file);
 
-  if (!m_configured) {
-    configure();
+  if (params_.load_calibration) {
+    parseCalibConfig();
   }
 
-  ROS_INFO_STREAM(BASH_MSG_GREEN << "Hi-ROS Skeleton Optimizer... RUNNING" << BASH_MSG_RESET);
-  ros::spin();
-}
-
-void hiros::optimizer::Optimizer::stop()
-{
-  ROS_INFO_STREAM("Hi-ROS Skeleton Optimizer... Stopping");
-
-  if (m_in_skeleton_group_sub) {
-    m_in_skeleton_group_sub.shutdown();
-  }
-
-  if (m_out_msg_pub) {
-    m_out_msg_pub.shutdown();
-  }
-
-  if (m_calibrate_srv) {
-    m_calibrate_srv.shutdown();
-  }
-
-  if (m_chande_id_srv) {
-    m_chande_id_srv.shutdown();
-  }
-
-  ROS_INFO_STREAM(BASH_MSG_GREEN << "Hi-ROS Skeleton Optimizer... STOPPED" << BASH_MSG_RESET);
-  ros::shutdown();
-}
-
-void hiros::optimizer::Optimizer::parseXml(const XmlRpc::XmlRpcValue& t_xml)
-{
-  for (int track_idx = 0; track_idx < t_xml.size(); ++track_idx) {
-    checkXmlRpcParam("track_id", t_xml[track_idx], XmlRpc::XmlRpcValue::TypeInt);
-    checkXmlRpcParam("links", t_xml[track_idx], XmlRpc::XmlRpcValue::TypeArray);
-
-    int track_id = static_cast<int>(t_xml[track_idx]["track_id"]);
-    for (int link_idx = 0; link_idx < t_xml[track_idx]["links"].size(); ++link_idx) {
-      checkXmlRpcParam("link_id", t_xml[track_idx]["links"][link_idx], XmlRpc::XmlRpcValue::TypeInt);
-      checkXmlRpcParam("link_confidence", t_xml[track_idx]["links"][link_idx], XmlRpc::XmlRpcValue::TypeDouble);
-      checkXmlRpcParam("link_length", t_xml[track_idx]["links"][link_idx], XmlRpc::XmlRpcValue::TypeDouble);
-
-      int link_id = static_cast<int>(t_xml[track_idx]["links"][link_idx]["link_id"]);
-      double link_confidence = static_cast<double>(t_xml[track_idx]["links"][link_idx]["link_confidence"]);
-      double link_length = static_cast<double>(t_xml[track_idx]["links"][link_idx]["link_length"]);
-
-      m_calibrated_links[track_id][link_id] = {link_confidence, link_length};
-    }
-  }
-}
-
-void hiros::optimizer::Optimizer::checkXmlRpcParam(const std::string& t_tag,
-                                                   const XmlRpc::XmlRpcValue& t_node,
-                                                   const XmlRpc::XmlRpcValue::Type t_type) const
-{
-  if (!checkXmlRpcSanity(t_tag, t_node, t_type)) {
-    ROS_FATAL_STREAM("Hi-ROS Skeleton Optimizer Error: " << t_tag << " not found");
-    ros::shutdown();
-    exit(EXIT_FAILURE);
-  }
-}
-
-bool hiros::optimizer::Optimizer::checkXmlRpcSanity(const std::string& t_tag,
-                                                    const XmlRpc::XmlRpcValue& t_node,
-                                                    const XmlRpc::XmlRpcValue::Type t_type) const
-{
-  if (!t_node.hasMember(t_tag)) {
-    std::cerr << "Tag: " << t_tag << ". Not found" << std::endl;
-    return false;
-  }
-  if (t_node[t_tag].getType() != t_type) {
-    std::cerr << "Tag: " << t_tag << ". Type different from expected" << std::endl;
-    return false;
-  }
-  if (!t_node[t_tag].valid()) {
-    std::cerr << "Tag: " << t_tag << ". Empty value not allowed." << std::endl;
-    return false;
-  }
-
-  return true;
-}
-
-void hiros::optimizer::Optimizer::setupRosTopics()
-{
-  m_in_skeleton_group_sub = m_nh.subscribe(m_params.input_topic_name, 1, &Optimizer::callback, this);
-
-  while (m_in_skeleton_group_sub.getNumPublishers() == 0 && !ros::isShuttingDown()) {
-    ROS_WARN_STREAM_DELAYED_THROTTLE(2, "Hi-ROS Skeleton Optimizer Warning: No input messages on skeleton group topic");
-  }
-
-  m_calibrate_srv = m_nh.advertiseService("calibrate", &Optimizer::calibrate, this);
-  m_chande_id_srv = m_nh.advertiseService("change_id", &Optimizer::changeId, this);
-
-  m_out_msg_pub = m_nh.advertise<hiros_skeleton_msgs::SkeletonGroup>(m_params.output_topic_name, 1);
-}
-
-bool hiros::optimizer::Optimizer::changeId(hiros_skeleton_optimizer::ChangeId::Request& t_req,
-                                           hiros_skeleton_optimizer::ChangeId::Response& t_res)
-{
-  int from_id = t_req.from;
-  int to_id = t_req.to;
-
-  if (to_id > from_id) {
-    ROS_WARN_STREAM("Hi-ROS Skeleton Optimizer Warning: Track IDs can only be lowered. Cannot change");
-    return t_res.ok = false;
-  }
-
-  if (std::find_if(
-        m_tracks.skeletons.begin(), m_tracks.skeletons.end(), [&](const auto& sk) { return sk.id == from_id; })
-      == m_tracks.skeletons.end()) {
-    ROS_WARN_STREAM("Hi-ROS Skeleton Optimizer Warning: Track ID " << from_id << " does not exist. Cannot change");
-    return t_res.ok = false;
-  }
-
-  if (std::find_if(m_tracks.skeletons.begin(), m_tracks.skeletons.end(), [&](const auto& sk) { return sk.id == to_id; })
-      != m_tracks.skeletons.end()) {
-    ROS_WARN_STREAM("Hi-ROS Skeleton Optimizer Warning: Track ID " << to_id << " already exists. Cannot change");
-    return t_res.ok = false;
-  }
-
-  ROS_INFO_STREAM("Hi-ROS Skeleton Optimizer... Change ID from " << from_id << " to " << to_id);
-
-  auto it =
-    std::find_if(m_ids_to_change.begin(), m_ids_to_change.end(), [&](const auto& p) { return p.second == from_id; });
-
-  // If track with ID from_id had already been changed
-  if (it != m_ids_to_change.end()) {
-    it->second = to_id;
-  }
-  // If track with ID from_id is being changed for the first time
-  else {
-    m_ids_to_change[from_id] = to_id;
-  }
-
-  return t_res.ok = true;
-}
-
-bool hiros::optimizer::Optimizer::calibrate(hiros_skeleton_optimizer::Calibrate::Request& t_req,
-                                            hiros_skeleton_optimizer::Calibrate::Response& t_res)
-{
-  if (m_acquire_calibration_tracks) {
-    ROS_WARN_STREAM("Hi-ROS Skeleton Optimizer Warning: Cannot start a calibration before finishing the previous one");
-    return t_res.ok = false;
-  }
-
-  m_ids_to_calibrate.clear();
-
-  for (const auto& id : t_req.track_ids) {
-    if (std::find_if(m_tracks.skeletons.begin(), m_tracks.skeletons.end(), [&](const auto& sk) { return sk.id == id; })
-        == m_tracks.skeletons.end()) {
-      ROS_WARN_STREAM("Hi-ROS Skeleton Optimizer Warning: Track ID " << id << " does not exist. Cannot calibrate");
-    }
-    else {
-      m_ids_to_calibrate.push_back(id);
-    }
-  }
-
-  if (m_ids_to_calibrate.empty()) {
-    return t_res.ok = false;
-  }
-
-  std::string tracks_to_calibrate_str;
-  for (const auto& id : m_ids_to_calibrate) {
-    tracks_to_calibrate_str += " " + std::to_string(id);
-  }
-  ROS_INFO_STREAM("Hi-ROS Skeleton Optimizer... Starting to calibrate tracks:" << tracks_to_calibrate_str);
-
-  m_acquire_calibration_tracks = true;
-  return t_res.ok = true;
-}
-
-void hiros::optimizer::Optimizer::callback(const hiros_skeleton_msgs::SkeletonGroup& t_msg)
-{
-  if (!ros::ok()) {
+  if (params_.number_of_frames_for_calibration <= 0) {
+    RCLCPP_FATAL_STREAM(
+        get_logger(),
+        "Hi-ROS Skeleton Optimizer Error: The number of frames to acquire for "
+        "the calibration must be greater than 0");
     stop();
     exit(EXIT_FAILURE);
   }
 
-  m_tracks = hiros::skeletons::utils::toStruct(t_msg);
-
-  changeIds();
-
-  if (m_acquire_calibration_tracks) {
-    pushTracksToCalibrationBuffer();
-
-    if (m_start_calibration) {
-      calibrate();
-      exportCalibration();
-    }
+  if (params_.max_calibration_coefficient_of_variation <= 0.0) {
+    params_.max_calibration_coefficient_of_variation =
+        std::numeric_limits<double>::max();
   }
 
-  fixOutliers();
-  optimize();
-
-  m_prev_tracks = m_tracks;
-
-  m_out_msg_pub.publish(hiros::skeletons::utils::toMsg(m_tracks));
-}
-
-void hiros::optimizer::Optimizer::changeIds()
-{
-  for (auto& sk : m_tracks.skeletons) {
-    if (m_ids_to_change.find(sk.id) != m_ids_to_change.end()) {
-      sk.id = m_ids_to_change.at(sk.id);
-    }
+  if (params_.outlier_threshold <= 0.0) {
+    params_.outlier_threshold = std::numeric_limits<double>::max();
   }
 }
 
-void hiros::optimizer::Optimizer::pushTracksToCalibrationBuffer()
-{
-  for (const auto& sk : m_tracks.skeletons) {
-    if (std::find(m_ids_to_calibrate.begin(), m_ids_to_calibrate.end(), sk.id) != m_ids_to_calibrate.end()) {
-      m_calibration_buffer[sk.id].push_back(sk);
+void hiros::skeletons::Optimizer::parseCalibConfig() {
+  std::vector<std::string> tracks{};
+  getParam("tracks", tracks);
+
+  for (const auto& track : tracks) {
+    int track_id{};
+    std::vector<std::string> track_links{};
+
+    getParam(track + ".id", track_id);
+    getParam(track + ".links", track_links);
+
+    for (const auto& link : track_links) {
+      int link_id{};
+      double link_confidence{};
+      double link_length{};
+
+      getParam(track + "." + link + ".id", link_id);
+      getParam(track + "." + link + ".confidence", link_confidence);
+      getParam(track + "." + link + ".length", link_length);
+
+      calibrated_tracks_[track_id][link_id] = {link_confidence, link_length};
     }
-  }
-
-  unsigned long n_acquired_frames =
-    std::min_element(m_calibration_buffer.begin(), m_calibration_buffer.end(), [](const auto& s1, const auto& s2) {
-      return s1.second.size() < s2.second.size();
-    })->second.size();
-
-  if (n_acquired_frames >= static_cast<unsigned long>(m_params.number_of_frames_for_calibration)) {
-    m_start_calibration = true;
   }
 }
 
-void hiros::optimizer::Optimizer::calibrate()
-{
-  bool calibration_failed;
-  double coeff_of_variation;
+void hiros::skeletons::Optimizer::setupRosTopics() {
+  calibrate_srv_ = create_service<hiros_skeleton_optimizer::srv::Calibrate>(
+      "calibrate", std::bind(&Optimizer::calibrateSrv, this,
+                             std::placeholders::_1, std::placeholders::_2));
+  chande_id_srv_ = create_service<hiros_skeleton_optimizer::srv::ChangeId>(
+      "change_id", std::bind(&Optimizer::changeIdSrv, this,
+                             std::placeholders::_1, std::placeholders::_2));
 
-  for (const auto& track : m_calibration_buffer) {
-    auto link_lengths = computeLinkLengths(track.second);
+  sub_ = create_subscription<hiros_skeleton_msgs::msg::SkeletonGroup>(
+      params_.input_topic, 10,
+      std::bind(&Optimizer::callback, this, std::placeholders::_1));
+
+  pub_ = create_publisher<hiros_skeleton_msgs::msg::SkeletonGroup>(
+      params_.output_topic, 10);
+}
+
+void hiros::skeletons::Optimizer::changeIds() {
+  for (auto& sk : tracks_.skeletons) {
+    if (ids_to_change_.find(sk.id) != ids_to_change_.end()) {
+      sk.id = ids_to_change_.at(sk.id);
+    }
+  }
+}
+
+void hiros::skeletons::Optimizer::pushTracksToCalibrationBuffer() {
+  for (const auto& sk : tracks_.skeletons) {
+    if (std::find(ids_to_calibrate_.begin(), ids_to_calibrate_.end(), sk.id) !=
+        ids_to_calibrate_.end()) {
+      calibration_buffer_[sk.id].push_back(sk);
+    }
+  }
+
+  auto n_acquired_frames{
+      std::min_element(calibration_buffer_.begin(), calibration_buffer_.end(),
+                       [](const auto& s1, const auto& s2) {
+                         return s1.second.size() < s2.second.size();
+                       })
+          ->second.size()};
+
+  if (n_acquired_frames >=
+      static_cast<unsigned long>(params_.number_of_frames_for_calibration)) {
+    start_calibration_ = true;
+  }
+}
+
+void hiros::skeletons::Optimizer::calibrate() {
+  bool calibration_failed{};
+  double coeff_of_variation{};
+
+  for (const auto& track : calibration_buffer_) {
+    auto link_lengths{computeLinkLengths(track.second)};
 
     calibration_failed = false;
 
     for (const auto& link_length : link_lengths) {
-      auto avg_link = computeAvg(coeff_of_variation, link_length.second);
+      auto avg_link{computeAvg(coeff_of_variation, link_length.second)};
 
-      if (coeff_of_variation > m_params.max_calibration_coefficient_of_variation) {
-        m_calibrated_links.erase(track.first);
+      if (coeff_of_variation >
+          params_.max_calibration_coefficient_of_variation) {
+        calibrated_tracks_.erase(track.first);
         calibration_failed = true;
-        ROS_WARN_STREAM("Hi-ROS Skeleton Optimizer Warning: Calibration of track ID " << track.first
-                                                                                      << " failed. Repeat");
+        RCLCPP_WARN_STREAM(
+            get_logger(),
+            "Hi-ROS Skeleton Optimizer Warning: Calibration of track ID "
+                << track.first << " failed. Repeat");
         break;
       }
 
-      m_calibrated_links[track.first][link_length.first] = avg_link;
+      calibrated_tracks_[track.first][link_length.first] = avg_link;
 
       if (calibration_failed) {
         break;
@@ -340,44 +175,58 @@ void hiros::optimizer::Optimizer::calibrate()
     }
   }
 
-  m_calibration_buffer.clear();
-  m_start_calibration = false;
-  m_acquire_calibration_tracks = false;
+  calibration_buffer_.clear();
+  start_calibration_ = false;
+  acquire_calibration_tracks_ = false;
 }
 
-void hiros::optimizer::Optimizer::exportCalibration() const
-{
-  if (!m_params.export_calibration) {
-    return;
-  }
+void hiros::skeletons::Optimizer::exportCalibration() const {
+  if (params_.export_calibration) {
+    std::ofstream file{};
 
-  std::ofstream file;
-
-  file.open(m_params.calibration_file, std::ios_base::out);
-  file << "tracks:" << std::endl;
-
-  for (const auto& track : m_calibrated_links) {
-    file << "  - track_id: " << track.first << std::endl;
-    file << "    links:" << std::endl;
-
-    for (const auto& link : track.second) {
-      file << "    - link_id: " << link.first << std::endl;
-      file << "      link_confidence: " << link.second.confidence << std::endl;
-      file << "      link_length: " << link.second.length << std::endl;
+    file.open(params_.calibration_file, std::ios_base::out);
+    file << "/**:" << std::endl;
+    file << "  ros__parameters:" << std::endl;
+    file << "    tracks: [";
+    for (auto idx{0u}; idx < calibrated_tracks_.size(); ++idx) {
+      file << "\"t" << std::setfill('0') << std::setw(2) << idx << "\", ";
     }
-  }
+    file << "]" << std::endl;
 
-  file.close();
+    auto track_idx{-1};
+    for (const auto& track : calibrated_tracks_) {
+      file << "    t" << std::setfill('0') << std::setw(2) << ++track_idx << ":"
+           << std::endl;
+      file << "      id: " << track.first << std::endl;
+      file << "      links: [";
+      for (auto idx{0u}; idx < track.second.size(); ++idx) {
+        file << "\"l" << std::setfill('0') << std::setw(2) << idx << "\", ";
+      }
+      file << "]" << std::endl;
+
+      auto link_idx{-1};
+      for (const auto& link : track.second) {
+        file << "      l" << std::setfill('0') << std::setw(2) << ++link_idx
+             << ":" << std::endl;
+        file << "        id: " << link.first << std::endl;
+        file << "        confidence: " << link.second.confidence << std::endl;
+        file << "        length: " << link.second.length << std::endl;
+      }
+    }
+
+    file.close();
+  }
 }
 
-std::map<int, std::vector<hiros::optimizer::LinkInfo>>
-hiros::optimizer::Optimizer::computeLinkLengths(const std::vector<hiros::skeletons::types::Skeleton>& t_skeletons) const
-{
-  std::map<int, std::vector<hiros::optimizer::LinkInfo>> link_lengths;
+std::map<int, std::vector<hiros::skeletons::Optimizer::LinkInfo>>
+hiros::skeletons::Optimizer::computeLinkLengths(
+    const std::vector<hiros::skeletons::types::Skeleton>& skeletons) const {
+  std::map<int, std::vector<hiros::skeletons::Optimizer::LinkInfo>>
+      link_lengths{};
 
-  for (const auto& skeleton : t_skeletons) {
+  for (const auto& skeleton : skeletons) {
     for (const auto& link : skeleton.links) {
-      auto length = skeletons::utils::linkLength(skeleton, link.id);
+      auto length{utils::linkLength(skeleton, link.id)};
 
       if (!std::isnan(length)) {
         link_lengths[link.id].push_back({link.confidence, length});
@@ -388,45 +237,48 @@ hiros::optimizer::Optimizer::computeLinkLengths(const std::vector<hiros::skeleto
   return link_lengths;
 }
 
-hiros::optimizer::LinkInfo
-hiros::optimizer::Optimizer::computeAvg(double& t_coeff_of_variation,
-                                        const std::vector<hiros::optimizer::LinkInfo>& t_links) const
-{
-  double length_sum = std::accumulate(t_links.begin(), t_links.end(), 0.0, [](double sum, const auto& link) {
-    return sum + (link.confidence * link.length);
-  });
+hiros::skeletons::Optimizer::LinkInfo hiros::skeletons::Optimizer::computeAvg(
+    double& coeff_of_variation,
+    const std::vector<hiros::skeletons::Optimizer::LinkInfo>& links) const {
+  auto length_sum{std::accumulate(
+      links.begin(), links.end(), 0.0, [](double sum, const auto& link) {
+        return sum + (link.confidence * link.length);
+      })};
 
-  double length_square_sum = std::accumulate(t_links.begin(), t_links.end(), 0.0, [](double sum, const auto& link) {
-    return sum + (link.confidence * std::pow(link.length, 2));
-  });
+  auto length_square_sum{std::accumulate(
+      links.begin(), links.end(), 0.0, [](double sum, const auto& link) {
+        return sum + (link.confidence * std::pow(link.length, 2));
+      })};
 
-  double confidence_sum = std::accumulate(
-    t_links.begin(), t_links.end(), 0.0, [](double sum, const auto& link) { return sum + link.confidence; });
+  auto confidence_sum{std::accumulate(
+      links.begin(), links.end(), 0.0,
+      [](double sum, const auto& link) { return sum + link.confidence; })};
 
-  double mean_length = length_sum / confidence_sum;
-  double stdev_length = std::sqrt(length_square_sum / confidence_sum - mean_length * mean_length);
-  double mean_conf = confidence_sum / t_links.size();
+  auto mean_length{length_sum / confidence_sum};
+  auto stdev_length{std::sqrt(length_square_sum / confidence_sum -
+                              mean_length * mean_length)};
+  auto mean_conf{confidence_sum / links.size()};
 
-  t_coeff_of_variation = stdev_length / mean_length;
+  coeff_of_variation = stdev_length / mean_length;
   LinkInfo res{mean_conf, mean_length};
   return res;
 }
 
-void hiros::optimizer::Optimizer::fixOutliers()
-{
-  if (m_prev_tracks.skeletons.empty()) {
+void hiros::skeletons::Optimizer::fixOutliers() {
+  if (prev_tracks_.skeletons.empty()) {
     return;
   }
 
-  for (auto& track : m_tracks.skeletons) {
-    if (m_calibrated_links.count(track.id) > 0) {
-      for (const auto& link_pair : m_calibrated_links.at(track.id)) {
+  for (auto& track : tracks_.skeletons) {
+    if (calibrated_tracks_.count(track.id) > 0) {
+      for (const auto& link_pair : calibrated_tracks_.at(track.id)) {
         if (track.hasLink(link_pair.first)) {
-          auto& link = track.getLink(link_pair.first);
-          auto parent_marker_id = link.parent_marker;
-          auto child_marker_id = link.child_marker;
+          auto& link{track.getLink(link_pair.first)};
+          auto parent_marker_id{link.parent_marker};
+          auto child_marker_id{link.child_marker};
 
-          if (track.hasMarker(parent_marker_id) && track.hasMarker(child_marker_id)) {
+          if (track.hasMarker(parent_marker_id) &&
+              track.hasMarker(child_marker_id)) {
             fixOutlier(track, link_pair.first, link_pair.second.length);
           }
         }
@@ -435,60 +287,64 @@ void hiros::optimizer::Optimizer::fixOutliers()
   }
 }
 
-void hiros::optimizer::Optimizer::fixOutlier(hiros::skeletons::types::Skeleton& t_track,
-                                             const int& t_link_id,
-                                             const double& t_link_length)
-{
-  if (!t_track.hasLink(t_link_id)) {
+void hiros::skeletons::Optimizer::fixOutlier(
+    hiros::skeletons::types::Skeleton& track, const int& link_id,
+    const double& link_length) {
+  if (!track.hasLink(link_id)) {
     return;
   }
 
-  auto& link = t_track.getLink(t_link_id);
+  auto& link{track.getLink(link_id)};
 
-  double length_error = std::abs(skeletons::utils::linkLength(t_track, t_link_id) - t_link_length) / t_link_length;
+  auto length_error{std::abs(utils::linkLength(track, link_id) - link_length) /
+                    link_length};
 
-  if (length_error > m_params.outlier_threshold) {
-    if (m_prev_tracks.hasSkeleton(t_track.id)) {
-      auto& prev_track = m_prev_tracks.getSkeleton(t_track.id);
+  if (length_error > params_.outlier_threshold) {
+    if (prev_tracks_.hasSkeleton(track.id)) {
+      auto& prev_track{prev_tracks_.getSkeleton(track.id)};
 
       if (prev_track.hasMarker(link.child_marker)) {
-        if (t_track.hasMarker(link.child_marker)) {
-          t_track.getMarker(link.child_marker) = prev_track.getMarker(link.child_marker);
+        if (track.hasMarker(link.child_marker)) {
+          track.getMarker(link.child_marker) =
+              prev_track.getMarker(link.child_marker);
           return;
         }
       }
     }
 
-    t_track.removeMarker(link.child_marker);
+    track.removeMarker(link.child_marker);
   }
 }
 
-void hiros::optimizer::Optimizer::optimize()
-{
-  for (auto& track : m_tracks.skeletons) {
+void hiros::skeletons::Optimizer::optimize() {
+  for (const auto& track : tracks_.skeletons) {
     if (hasCalibration(track.id)) {
-      ceres::Problem problem;
-      ceres::Solver::Options options;
+      ceres::Problem problem{};
+      ceres::Solver::Options options{};
       options.logging_type = ceres::LoggingType::SILENT;
-      ceres::Solver::Summary summary;
+      ceres::Solver::Summary summary{};
 
       for (const auto& link : track.links) {
-        if (track.hasMarker(link.parent_marker) && track.hasMarker(link.child_marker)) {
-          auto& parent_marker = track.getMarker(link.parent_marker);
-          auto& child_marker = track.getMarker(link.child_marker);
+        if (track.hasMarker(link.parent_marker) &&
+            track.hasMarker(link.child_marker)) {
+          auto& parent_marker{track.getMarker(link.parent_marker)};
+          auto& child_marker{track.getMarker(link.child_marker)};
 
-          ceres::CostFunction* cost_function =
-            new ceres::AutoDiffCostFunction<CostFunction, 1, 1, 1, 1, 1, 1, 1>(new CostFunction(
-              m_params.outlier_threshold, m_calibrated_links.at(track.id).at(link.id).length, track, link));
+          auto cost_function{
+              new ceres::AutoDiffCostFunction<CostFunction, 1, 1, 1, 1, 1, 1,
+                                              1>(new CostFunction(
+                  params_.outlier_threshold,
+                  calibrated_tracks_.at(track.id).at(link.id).length, track,
+                  link))};
 
-          problem.AddResidualBlock(cost_function,
-                                   nullptr,
-                                   const_cast<double*>(&parent_marker.center.pose.position.x()),
-                                   const_cast<double*>(&parent_marker.center.pose.position.y()),
-                                   const_cast<double*>(&parent_marker.center.pose.position.z()),
-                                   const_cast<double*>(&child_marker.center.pose.position.x()),
-                                   const_cast<double*>(&child_marker.center.pose.position.y()),
-                                   const_cast<double*>(&child_marker.center.pose.position.z()));
+          problem.AddResidualBlock(
+              cost_function, nullptr,
+              const_cast<double*>(&parent_marker.center.pose.position.x()),
+              const_cast<double*>(&parent_marker.center.pose.position.y()),
+              const_cast<double*>(&parent_marker.center.pose.position.z()),
+              const_cast<double*>(&child_marker.center.pose.position.x()),
+              const_cast<double*>(&child_marker.center.pose.position.y()),
+              const_cast<double*>(&child_marker.center.pose.position.z()));
         }
       }
 
@@ -498,66 +354,137 @@ void hiros::optimizer::Optimizer::optimize()
   }
 }
 
-bool hiros::optimizer::Optimizer::hasCalibration(const int& t_track_id) const
-{
-  return m_calibrated_links.find(t_track_id) != m_calibrated_links.end();
+bool hiros::skeletons::Optimizer::hasCalibration(const int& track_id) const {
+  return calibrated_tracks_.find(track_id) != calibrated_tracks_.end();
 }
 
-void hiros::optimizer::Optimizer::alignLinkOrientations()
-{
-  for (auto& track : m_tracks.skeletons) {
-    for (auto& link : track.links) {
-      alignLinkOrientation(track, link.id);
+void hiros::skeletons::Optimizer::alignLinkOrientations() {
+  for (auto& track : tracks_.skeletons) {
+    for (const auto& link : track.links) {
+      utils::alignLinkOrientation(track, link.id);
     }
   }
 }
 
-void hiros::optimizer::Optimizer::alignLinkOrientation(hiros::skeletons::types::Skeleton& t_sk,
-                                                       const int& t_lk_id) const
-{
-  if (!t_sk.hasLink(t_lk_id)) {
+void hiros::skeletons::Optimizer::changeIdSrv(
+    const std::shared_ptr<hiros_skeleton_optimizer::srv::ChangeId::Request> req,
+    std::shared_ptr<hiros_skeleton_optimizer::srv::ChangeId::Response> res) {
+  if (req->to_id > req->from_id) {
+    RCLCPP_WARN_STREAM(
+        get_logger(),
+        "Hi-ROS Skeleton Optimizer Warning: Track IDs can only be lowered. "
+        "Cannot change");
+    res->ok = false;
     return;
   }
 
-  auto& link = t_sk.getLink(t_lk_id);
-
-  if (skeletons::utils::isNaN(link.center.pose.orientation) || !t_sk.hasMarker(link.parent_marker)
-      || !t_sk.hasMarker(link.child_marker)) {
+  if (std::find_if(tracks_.skeletons.begin(), tracks_.skeletons.end(),
+                   [&](const auto& sk) { return sk.id == req->from_id; }) ==
+      tracks_.skeletons.end()) {
+    RCLCPP_WARN_STREAM(get_logger(),
+                       "Hi-ROS Skeleton Optimizer Warning: Track ID "
+                           << req->from_id << " does not exist. Cannot change");
+    res->ok = false;
     return;
   }
 
-  auto link_axis =
-    (t_sk.getMarker(link.parent_marker).center.pose.position - t_sk.getMarker(link.child_marker).center.pose.position)
-      .normalized();
+  if (std::find_if(tracks_.skeletons.begin(), tracks_.skeletons.end(),
+                   [&](const auto& sk) { return sk.id == req->to_id; }) !=
+      tracks_.skeletons.end()) {
+    RCLCPP_WARN_STREAM(get_logger(),
+                       "Hi-ROS Skeleton Optimizer Warning: Track ID "
+                           << req->to_id << " already exists. Cannot change");
+    res->ok = false;
+    return;
+  }
 
-  auto closest_cartesian_axis =
-    closestCartesianAxis(tf2::quatRotate(link.center.pose.orientation.inverse(), link_axis).normalized());
+  RCLCPP_WARN_STREAM(get_logger(),
+                     "Hi-ROS Skeleton Optimizer... Change ID from "
+                         << req->from_id << " to " << req->to_id);
 
-  // Axis of the link orientation SoR to be aligned to the link axis
-  auto quat_axis = tf2::quatRotate(link.center.pose.orientation, closest_cartesian_axis).normalized();
+  auto it{
+      std::find_if(ids_to_change_.begin(), ids_to_change_.end(),
+                   [&](const auto& p) { return p.second == req->from_id; })};
 
-  auto rot_axis = quat_axis.cross(link_axis).normalized();
-  auto rot_angle = acos(std::min(std::max(-1., quat_axis.dot(link_axis)), 1.));
-  // Rotation to align the link orientation to the link axis
-  auto rot_quat = tf2::Quaternion(rot_axis, rot_angle);
+  // If track with ID from_id had already been changed
+  if (it != ids_to_change_.end()) {
+    it->second = req->to_id;
+  }
+  // If track with ID from_id is being changed for the first time
+  else {
+    ids_to_change_[req->from_id] = req->to_id;
+  }
 
-  link.center.pose.orientation = rot_quat * link.center.pose.orientation;
+  res->ok = true;
 }
 
-tf2::Vector3 hiros::optimizer::Optimizer::closestCartesianAxis(const tf2::Vector3& t_vec) const
-{
-  auto closest_axis_idx = t_vec.closestAxis(); // 0: x, 1: y, 2: z
+void hiros::skeletons::Optimizer::calibrateSrv(
+    const std::shared_ptr<hiros_skeleton_optimizer::srv::Calibrate::Request>
+        req,
+    std::shared_ptr<hiros_skeleton_optimizer::srv::Calibrate::Response> res) {
+  if (acquire_calibration_tracks_) {
+    RCLCPP_WARN_STREAM(get_logger(),
+                       "Hi-ROS Skeleton Optimizer Warning: Cannot start a "
+                       "calibration before finishing the previous one");
+    res->ok = false;
+    return;
+  }
 
-  tf2::Vector3DoubleData signs;
-  signs.m_floats[0] = t_vec.x() >= 0 ? 1 : -1;
-  signs.m_floats[1] = t_vec.y() >= 0 ? 1 : -1;
-  signs.m_floats[2] = t_vec.z() >= 0 ? 1 : -1;
+  ids_to_calibrate_.clear();
 
-  tf2::Vector3DoubleData closest_axis_serialized{0, 0, 0};
-  closest_axis_serialized.m_floats[closest_axis_idx] = signs.m_floats[closest_axis_idx];
+  for (const auto& id : req->track_ids) {
+    if (std::find_if(tracks_.skeletons.begin(), tracks_.skeletons.end(),
+                     [&](const auto& sk) { return sk.id == id; }) ==
+        tracks_.skeletons.end()) {
+      RCLCPP_WARN_STREAM(get_logger(),
+                         "Hi-ROS Skeleton Optimizer Warning: Track ID "
+                             << id << " does not exist. Cannot calibrate");
+    } else {
+      ids_to_calibrate_.push_back(id);
+    }
+  }
 
-  tf2::Vector3 closest_axis;
-  closest_axis.deSerialize(closest_axis_serialized);
+  if (ids_to_calibrate_.empty()) {
+    res->ok = false;
+    return;
+  }
 
-  return closest_axis;
+  std::string tracks_to_calibrate_str{};
+  for (const auto& id : ids_to_calibrate_) {
+    tracks_to_calibrate_str += " " + std::to_string(id);
+  }
+  RCLCPP_INFO_STREAM(
+      get_logger(), "Hi-ROS Skeleton Optimizer... Starting to calibrate tracks:"
+                        << tracks_to_calibrate_str);
+
+  acquire_calibration_tracks_ = true;
+  res->ok = true;
+}
+
+void hiros::skeletons::Optimizer::callback(
+    const hiros_skeleton_msgs::msg::SkeletonGroup& msg) {
+  if (!rclcpp::ok()) {
+    stop();
+    exit(EXIT_FAILURE);
+  }
+
+  tracks_ = utils::toStruct(msg);
+
+  changeIds();
+
+  if (acquire_calibration_tracks_) {
+    pushTracksToCalibrationBuffer();
+
+    if (start_calibration_) {
+      calibrate();
+      exportCalibration();
+    }
+  }
+
+  fixOutliers();
+  optimize();
+
+  prev_tracks_ = tracks_;
+
+  pub_->publish(utils::toMsg(tracks_));
 }

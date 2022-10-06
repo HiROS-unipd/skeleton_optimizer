@@ -1,4 +1,4 @@
-int32 from
-int32 to
+int32 from_id
+int32 to_id
 ---
 bool ok

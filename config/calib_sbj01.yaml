@@ -1,0 +1,33 @@
+/**:
+  ros__parameters:
+    tracks: ["t00", "t01"]
+    t00:
+      id: 0
+      links: ["l00", "l01", "l02"]
+      l00:
+        id: 0
+        confidence: 0.5
+        length: 0.3
+      l01:
+        id: 1
+        confidence: 0.5
+        length: 0.3
+      l02:
+        id: 2
+        confidence: 0.5
+        length: 0.3
+    t01:
+      id: 1
+      links: ["l00", "l01", "l02"]
+      l00:
+        id: 0
+        confidence: 0.5
+        length: 0.3
+      l00:
+        id: 1
+        confidence: 0.5
+        length: 0.3
+      l00:
+        id: 2
+        confidence: 0.5
+        length: 0.3

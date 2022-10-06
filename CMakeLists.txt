@@ -1,77 +1,70 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.5)
 project(hiros_skeleton_optimizer)
 
-# Compile as C++11, supported in ROS Kinetic and newer
-add_compile_options(-std=c++14)
+# Default to C++14
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 14)
+endif()
 
-# Find catkin macros and libraries if COMPONENTS list like find_package(catkin
-# REQUIRED COMPONENTS xyz) is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS roscpp message_generation std_msgs hiros_skeleton_msgs)
+find_package(ament_cmake REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(hiros_skeleton_msgs REQUIRED)
+find_package(hiros_skeleton_tracker REQUIRED)
 
-## System dependencies are found with CMake's conventions
-# find_package(Boost REQUIRED COMPONENTS system)
-#set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 find_package(Eigen3 REQUIRED)
 find_package(Ceres REQUIRED)
 
-# ##############################################################################
-# Declare ROS messages, services and actions ##
-# ##############################################################################
-# Generate services in the 'srv' folder
-add_service_files(FILES Calibrate.srv ChangeId.srv)
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  # the following line skips the linter which checks for copyrights
+  # uncomment the line when a copyright and license is not present in all source files
+  #set(ament_cmake_copyright_FOUND TRUE)
+  # the following line skips cpplint (only works in a git repo)
+  # uncomment the line when this package is not in a git repo
+  #set(ament_cmake_cpplint_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
+endif()
 
-# Generate added messages and services with any dependencies listed here
-generate_messages(DEPENDENCIES std_msgs)
+set(srv_files
+  "srv/Calibrate.srv"
+  "srv/ChangeId.srv"
+)
 
-# Declare the package to be exported and made available to ros
-catkin_package(CATKIN_DEPENDS message_runtime std_msgs hiros_skeleton_msgs)
+rosidl_generate_interfaces(${PROJECT_NAME}
+  ${srv_files})
+ament_export_dependencies(rosidl_default_runtime)
 
-# ##############################################################################
-# Build ##
-# ##############################################################################
-# Specify additional locations of header files Your package locations should be
-# listed before other locations
-include_directories(include
-                    ${catkin_INCLUDE_DIRS}
-                    ${EIGEN_INCLUDE_DIRS}
-                    ${CERES_INCUDE_DIRS})
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
-# Display additional files in qtcreator
-file(GLOB_RECURSE FILES_LIST "*.launch" "*.msg" "*.srv" "*.xml")
-add_custom_target(additional_files_${PROJECT_NAME} SOURCES ${FILES_LIST})
+add_executable(${PROJECT_NAME}_node
+    src/main.cpp
+    src/CostFunction.cpp
+    src/Optimizer.cpp
+)
+ament_target_dependencies(${PROJECT_NAME}_node rclcpp hiros_skeleton_msgs hiros_skeleton_tracker)
 
-# Declare a C++ executable With catkin_make all packages are built within a
-# single CMake context The recommended prefix ensures that target names across
-# packages don't collide add_executable(${PROJECT_NAME}_node
-add_executable(${PROJECT_NAME}_node src/main.cpp src/CostFunction.cpp src/Optimizer.cpp)
+set_target_properties(${PROJECT_NAME}_node
+  PROPERTIES OUTPUT_NAME
+  ${PROJECT_NAME}
+  PREFIX
+  ""
+)
 
-# Rename C++ executable without prefix The above recommended prefix causes long
-# target names, the following renames the target back to the shorter version for
-# ease of user use e.g. "rosrun someones_pkg node" instead of "rosrun
-# someones_pkg someones_pkg_node"
-set_target_properties(${PROJECT_NAME}_node PROPERTIES OUTPUT_NAME
-                                                      ${PROJECT_NAME} PREFIX "")
+target_include_directories(${PROJECT_NAME}_node
+  PRIVATE include ${EIGEN_INCLUDE_DIRS} ${CERES_INCUDE_DIRS}
+)
 
-# Add cmake target dependencies of the executable same as for the library above
-add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS}
-                 ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_node "${cpp_typesupport_target}" ${CERES_LIBRARIES})
 
-# Specify libraries to link a library or executable target against
-target_link_libraries(${PROJECT_NAME}_node ${catkin_LIBRARIES} ${CERES_LIBRARIES})
+install(
+  TARGETS ${PROJECT_NAME}_node
+  DESTINATION lib/${PROJECT_NAME}
+)
 
-set_target_properties(${PROJECT_NAME}_node PROPERTIES PUBLIC_HEADER
-                                                      include/skeleton_optimizer/Optimizer.h)
+install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
 
-target_include_directories(
-    ${PROJECT_NAME}_node PRIVATE include ${catkin_INCLUDE_DIRS})
-
-# ##############################################################################
-# Install ##
-# ##############################################################################
-install(TARGETS ${PROJECT_NAME}_node
-        RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
-
-install(FILES include/skeleton_optimizer/Optimizer.h
-        DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
-
-install(DIRECTORY launch DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+ament_package()
