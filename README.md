@@ -25,3 +25,15 @@ This ROS package takes as input a skeleton group and optimizes the marker positi
 ```
 ros2 launch hiros_skeleton_optimizer default.launch.py
 ```
+
+
+## Calibrate tracks
+To calibrate tracks <0, 1>:
+```
+ros2 service call /hiros/calibrate hiros_skeleton_optimizer/srv/Calibrate "{track_ids: [0,1]}"
+```
+
+To change a track's ID (e.g. to change track ID 1 to 10):
+```
+ros2 service call /hiros/change_id hiros_skeleton_optimizer/srv/ChangeId "{from_id: 1, to_id: 10}"
+```

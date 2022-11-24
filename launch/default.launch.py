@@ -4,6 +4,12 @@ from launch_ros.actions import Node
 def generate_launch_description():
     ld = LaunchDescription()
 
+    calib_cfg = os.path.join(
+    get_package_share_directory('hiros_skeleton_optimizer'),
+    'config',
+    'calib_test.yaml'
+    )
+
     node=Node(
         package = 'hiros_skeleton_optimizer',
         executable = 'hiros_skeleton_optimizer',
@@ -19,6 +25,7 @@ def generate_launch_description():
             {'export_calibration' : False},
             {'load_calibration' : False},
             {'calibration_file' : '/path/to/calibration/file'},
+            calib_cfg,
         ]
     )
 
