@@ -264,11 +264,7 @@ hiros::skeletons::Optimizer::LinkInfo hiros::skeletons::Optimizer::computeAvg(
   return res;
 }
 
-void hiros::skeletons::Optimizer::fixOutliers() {
-  if (prev_tracks_.skeletons.empty()) {
-    return;
-  }
-
+void hiros::skeletons::Optimizer::removeOutliers() {
   for (auto& track : tracks_.skeletons) {
     if (calibrated_tracks_.count(track.id) > 0) {
       for (const auto& link_pair : calibrated_tracks_.at(track.id)) {
@@ -279,7 +275,7 @@ void hiros::skeletons::Optimizer::fixOutliers() {
 
           if (track.hasMarker(parent_marker_id) &&
               track.hasMarker(child_marker_id)) {
-            fixOutlier(track, link_pair.first, link_pair.second.length);
+            removeOutlier(track, link_pair.first, link_pair.second.length);
           }
         }
       }
@@ -287,7 +283,7 @@ void hiros::skeletons::Optimizer::fixOutliers() {
   }
 }
 
-void hiros::skeletons::Optimizer::fixOutlier(
+void hiros::skeletons::Optimizer::removeOutlier(
     hiros::skeletons::types::Skeleton& track, const int& link_id,
     const double& link_length) {
   if (!track.hasLink(link_id)) {
@@ -300,18 +296,6 @@ void hiros::skeletons::Optimizer::fixOutlier(
                     link_length};
 
   if (length_error > params_.outlier_threshold) {
-    if (prev_tracks_.hasSkeleton(track.id)) {
-      auto& prev_track{prev_tracks_.getSkeleton(track.id)};
-
-      if (prev_track.hasMarker(link.child_marker)) {
-        if (track.hasMarker(link.child_marker)) {
-          track.getMarker(link.child_marker) =
-              prev_track.getMarker(link.child_marker);
-          return;
-        }
-      }
-    }
-
     track.removeMarker(link.child_marker);
   }
 }
@@ -481,10 +465,7 @@ void hiros::skeletons::Optimizer::callback(
     }
   }
 
-  fixOutliers();
+  removeOutliers();
   optimize();
-
-  prev_tracks_ = tracks_;
-
   pub_->publish(utils::toMsg(tracks_));
 }

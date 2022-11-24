@@ -70,9 +70,9 @@ class Optimizer : public rclcpp::Node {
   LinkInfo computeAvg(double& coeff_of_variation,
                       const std::vector<LinkInfo>& links) const;
 
-  void fixOutliers();
-  void fixOutlier(hiros::skeletons::types::Skeleton& track, const int& link_id,
-                  const double& link_length);
+  void removeOutliers();
+  void removeOutlier(hiros::skeletons::types::Skeleton& track,
+                     const int& link_id, const double& link_length);
   void optimize();
 
   bool hasCalibration(const int& track_id) const;
@@ -105,7 +105,6 @@ class Optimizer : public rclcpp::Node {
 
   Parameters params_{};
 
-  skeletons::types::SkeletonGroup prev_tracks_{};
   skeletons::types::SkeletonGroup tracks_{};
 
   // map<track_id, vector<skeleton>>
