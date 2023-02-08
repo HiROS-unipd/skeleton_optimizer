@@ -309,26 +309,28 @@ void hiros::skeletons::Optimizer::optimize() {
       ceres::Solver::Summary summary{};
 
       for (const auto& link : track.links) {
-        if (track.hasMarker(link.parent_marker) &&
+        if (calibrated_tracks_.at(track.id).count(link.id) > 0 &&
+            track.hasMarker(link.parent_marker) &&
             track.hasMarker(link.child_marker)) {
           auto& parent_marker{track.getMarker(link.parent_marker)};
           auto& child_marker{track.getMarker(link.child_marker)};
 
           auto cost_function{
-              new ceres::AutoDiffCostFunction<CostFunction, 1, 1, 1, 1, 1, 1,
-                                              1>(new CostFunction(
-                  params_.outlier_threshold,
-                  calibrated_tracks_.at(track.id).at(link.id).length, track,
-                  link))};
+              new ceres::AutoDiffCostFunction<CostFunction, 3, 3, 3>(
+                  new CostFunction(
+                      calibrated_tracks_.at(track.id).at(link.id).length, track,
+                      link))};
 
-          problem.AddResidualBlock(
-              cost_function, nullptr,
-              const_cast<double*>(&parent_marker.center.pose.position.x()),
-              const_cast<double*>(&parent_marker.center.pose.position.y()),
-              const_cast<double*>(&parent_marker.center.pose.position.z()),
-              const_cast<double*>(&child_marker.center.pose.position.x()),
-              const_cast<double*>(&child_marker.center.pose.position.y()),
-              const_cast<double*>(&child_marker.center.pose.position.z()));
+          double* x_p[]{
+              (const_cast<double*>(&parent_marker.center.pose.position.x())),
+              (const_cast<double*>(&parent_marker.center.pose.position.y())),
+              (const_cast<double*>(&parent_marker.center.pose.position.z()))};
+          double* x_c[]{
+              (const_cast<double*>(&child_marker.center.pose.position.x())),
+              (const_cast<double*>(&child_marker.center.pose.position.y())),
+              (const_cast<double*>(&child_marker.center.pose.position.z()))};
+
+          problem.AddResidualBlock(cost_function, nullptr, *x_p, *x_c);
         }
       }
 

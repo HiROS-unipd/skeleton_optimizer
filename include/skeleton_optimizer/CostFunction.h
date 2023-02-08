@@ -2,6 +2,7 @@
 #define hiros_skeleton_optimizer_CostFunction_h
 
 // Custom external packages dependencies
+#include "ceres/jet.h"
 #include "skeletons/types.h"
 #include "skeletons/utils.h"
 
@@ -10,102 +11,132 @@ namespace skeletons {
 
 class CostFunction {
  public:
-  CostFunction(const double& max_length_error, const double& link_length,
+  CostFunction(const double& link_length,
                const hiros::skeletons::types::Skeleton& skeleton,
-               const hiros::skeletons::types::Link& link);
-  ~CostFunction();
+               const hiros::skeletons::types::Link& link)
+      : link_length_(link_length), link_(link) {
+    if (skeleton.hasMarker(link.parent_marker) &&
+        skeleton.hasMarker(link.child_marker)) {
+      parent_marker_ = skeleton.getMarker(link.parent_marker);
+      child_marker_ = skeleton.getMarker(link.child_marker);
+    }
+  }
+
+  ~CostFunction() {}
 
   template <typename T>
-  bool operator()(const T* const x0, const T* const y0, const T* const z0,
-                  const T* const x1, const T* const y1, const T* const z1,
-                  T* residual) const {
+  bool operator()(const T* const x_p, const T* const x_c, T* e) const {
     if (skeletons::utils::isNaN(parent_marker_.center.pose.position) ||
         skeletons::utils::isNaN(child_marker_.center.pose.position)) {
       return false;
     }
 
-    double length_error = abs(
+    auto length_error{abs(
         hiros::skeletons::utils::distance(parent_marker_.center.pose.position,
                                           child_marker_.center.pose.position) -
-        link_length_);
-
+        link_length_)};
     auto length_weight{
-        std::min(std::max(0.001, length_error / max_length_error_), 0.999)};
-    auto position_weight{0.5 * (1 - length_weight)};
-    auto orientation_weight{1 - length_weight - position_weight};
+        std::min(std::max(0.001, length_error / link_length_), 0.999)};
 
-    auto length_distance{lengthDistance(x0, y0, z0, x1, y1, z1)};
-    auto position_distance{positionDistance(x0, y0, z0, x1, y1, z1)};
-
-    residual[0] = sqrt(length_weight * length_distance +
-                       position_weight * position_distance);
-
-    if (!skeletons::utils::isNaN(link_.center.pose.orientation)) {
-      auto orientation_distance{orientationDistance(x0, y0, z0, x1, y1, z1)};
-      if (orientation_distance > 0.) {
-        residual[0] = sqrt(position_weight * position_distance +
-                           length_weight * length_distance +
-                           orientation_weight * orientation_distance);
-      }
-    }
+    e[0] = length_weight * lengthError(x_p, x_c);
+    e[1] = length_weight * 0.1 * positionError(x_p, x_c);
+    e[2] = length_weight * 0.1 * directionError(x_p, x_c);
 
     return true;
   }
 
  private:
   template <typename T>
-  T lengthDistance(const T* const x0, const T* const y0, const T* const z0,
-                   const T* const x1, const T* const y1,
-                   const T* const z1) const {
-    return abs((pow(x0[0] - x1[0], 2) + pow(y0[0] - y1[0], 2) +
-                pow(z0[0] - z1[0], 2) - pow(link_length_, 2)));
+  T lengthError(const T* const x_p, const T* const x_c) const {
+    // Squared length of the optimized link
+    auto sq_link_length{ceres::pow(x_p[0] - x_c[0], 2) +
+                        ceres::pow(x_p[1] - x_c[1], 2) +
+                        ceres::pow(x_p[2] - x_c[2], 2)};
+
+    // If sqrt() is not differentiable -> x ~ 0
+    if (sq_link_length == 0.) {
+      return T(0.) - link_length_;
+    }
+
+    // If sqrt() is differentiable
+    return ceres::sqrt(sq_link_length) - link_length_;
   }
 
   template <typename T>
-  T positionDistance(const T* const x0, const T* const y0, const T* const z0,
-                     const T* const x1, const T* const y1,
-                     const T* const z1) const {
-    return pow(x0[0] - parent_marker_.center.pose.position.x(), 2) +
-           pow(y0[0] - parent_marker_.center.pose.position.y(), 2) +
-           pow(z0[0] - parent_marker_.center.pose.position.z(), 2) +
-           pow(x1[0] - child_marker_.center.pose.position.x(), 2) +
-           pow(y1[0] - child_marker_.center.pose.position.y(), 2) +
-           pow(z1[0] - child_marker_.center.pose.position.z(), 2);
+  T positionError(const T* const x_p, const T* x_c) const {
+    // Squared distance between optimized and original parent marker
+    auto sq_xp_err{
+        ceres::pow(x_p[0] - parent_marker_.center.pose.position.x(), 2) +
+        ceres::pow(x_p[1] - parent_marker_.center.pose.position.y(), 2) +
+        ceres::pow(x_p[2] - parent_marker_.center.pose.position.z(), 2)};
+    // Squared distance between optimized and original child marker
+    auto sq_xc_err{
+        ceres::pow(x_c[0] - child_marker_.center.pose.position.x(), 2) +
+        ceres::pow(x_c[1] - child_marker_.center.pose.position.y(), 2) +
+        ceres::pow(x_c[2] - child_marker_.center.pose.position.z(), 2)};
+
+    // Initialize errors to 0 (used if sqrt() is not differentiable -> x ~ 0)
+    T xp_err(0.);
+    T xc_err(0.);
+
+    // If sqrt() is differentiable
+    if (sq_xp_err > 0.) {
+      xp_err = ceres::sqrt(sq_xp_err);
+    }
+    if (sq_xc_err > 0.) {
+      xc_err = ceres::sqrt(sq_xc_err);
+    }
+
+    // Return sum of parent and child marker errors
+    return xp_err + xc_err;
   }
 
   template <typename T>
-  T orientationDistance(const T* const x0, const T* const y0, const T* const z0,
-                        const T* const x1, const T* const y1,
-                        const T* const z1) const {
-    // Axis of the link orientation SoR to be aligned to the link axis
-    auto quat_axis{getQuatAxis(parent_marker_.center.pose.position -
-                                   child_marker_.center.pose.position,
-                               link_.center.pose.orientation)};
+  T directionError(const T* const x_p, const T* const x_c) const {
+    // Normalized vector before optimization
+    auto orig_v{(child_marker_.center.pose.position -
+                 parent_marker_.center.pose.position)
+                    .normalize()};
 
-    // x, y, z components of the link axis computed from parent and child
-    // markers positions
-    auto dx{x0[0] - x1[0]};
-    auto dy{y0[0] - y1[0]};
-    auto dz{z0[0] - z1[0]};
-    auto den{sqrt(pow(dx, 2) + pow(dy, 2) + pow(dz, 2))};
-    dx = dx / den;
-    dy = dy / den;
-    dz = dz / den;
+    // Optimized vector
+    auto vx{x_c[0] - x_p[0]};
+    auto vy{x_c[1] - x_p[1]};
+    auto vz{x_c[2] - x_p[2]};
 
-    // Rotation angle to align the link orientation to the link axis
-    auto rot_angle{
-        acos(fmin(fmax(T(-1.), quat_axis.x() * dx + quat_axis.y() * dy +
-                                   quat_axis.z() * dz),
-                  T(1.)))};
+    // Squared norm of the optimized vector
+    auto den{ceres::pow(vx, 2) + ceres::pow(vy, 2) + ceres::pow(vz, 2)};
 
-    return pow(rot_angle, 2);
+    if (den == 0.) {
+      // Cannot normalize the vector
+      return T(0.);
+    }
+
+    // Norm of the optimized vector
+    den = ceres::sqrt(den);
+
+    // Normalized optimized vector
+    auto vnx{vx / den};
+    auto vny{vy / den};
+    auto vnz{vz / den};
+
+    // Difference between original and optimized vectors
+    auto diff_x{vnx - orig_v.x()};
+    auto diff_y{vny - orig_v.y()};
+    auto diff_z{vnz - orig_v.z()};
+
+    // Squared magnitude of the difference vector -> squared distance
+    auto sq_dist{ceres::pow(diff_x, 2) + ceres::pow(diff_y, 2) +
+                 ceres::pow(diff_z, 2)};
+
+    // If sqrt() is not differentiable -> x ~ 0
+    if (sq_dist == 0.) {
+      return T(0.);
+    }
+
+    // If sqrt() is differentiable
+    return ceres::sqrt(sq_dist);
   }
 
-  tf2::Vector3 getQuatAxis(tf2::Vector3 axis,
-                           const tf2::Quaternion& orientation) const;
-  tf2::Vector3 closestCartesianAxis(const tf2::Vector3& vec) const;
-
-  double max_length_error_{};
   double link_length_{};
   hiros::skeletons::types::Link link_{};
   hiros::skeletons::types::Marker parent_marker_{};

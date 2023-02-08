@@ -39,7 +39,6 @@ rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typ
 
 add_executable(${PROJECT_NAME}_node
     src/main.cpp
-    src/CostFunction.cpp
     src/Optimizer.cpp
 )
 ament_target_dependencies(${PROJECT_NAME}_node rclcpp hiros_skeleton_msgs hiros_skeleton_tracker)
