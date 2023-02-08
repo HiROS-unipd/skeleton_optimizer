@@ -21,15 +21,13 @@ hiros::skeletons::Optimizer::~Optimizer() { stop(); }
 void hiros::skeletons::Optimizer::start() {
   configure();
 
-  RCLCPP_INFO_STREAM(get_logger(), BASH_MSG_GREEN
-                                       << "Hi-ROS Skeleton Optimizer... RUNNING"
-                                       << BASH_MSG_RESET);
+  RCLCPP_INFO_STREAM(get_logger(),
+                     BASH_MSG_GREEN << "Running" << BASH_MSG_RESET);
 }
 
 void hiros::skeletons::Optimizer::stop() const {
-  RCLCPP_INFO_STREAM(get_logger(), BASH_MSG_GREEN
-                                       << "Hi-ROS Skeleton Optimizer... STOPPED"
-                                       << BASH_MSG_RESET);
+  RCLCPP_INFO_STREAM(get_logger(),
+                     BASH_MSG_GREEN << "Stopped" << BASH_MSG_RESET);
 
   rclcpp::shutdown();
 }
@@ -56,10 +54,9 @@ void hiros::skeletons::Optimizer::getParams() {
   }
 
   if (params_.number_of_frames_for_calibration <= 0) {
-    RCLCPP_FATAL_STREAM(
-        get_logger(),
-        "Hi-ROS Skeleton Optimizer Error: The number of frames to acquire for "
-        "the calibration must be greater than 0");
+    RCLCPP_FATAL_STREAM(get_logger(),
+                        "The number of frames to acquire for the calibration "
+                        "must be greater than 0");
     stop();
     exit(EXIT_FAILURE);
   }
@@ -160,10 +157,9 @@ void hiros::skeletons::Optimizer::calibrate() {
           params_.max_calibration_coefficient_of_variation) {
         calibrated_tracks_.erase(track.first);
         calibration_failed = true;
-        RCLCPP_WARN_STREAM(
-            get_logger(),
-            "Hi-ROS Skeleton Optimizer Warning: Calibration of track ID "
-                << track.first << " failed. Repeat");
+        RCLCPP_WARN_STREAM(get_logger(), "Calibration of track ID "
+                                             << track.first
+                                             << " failed. Repeat");
         break;
       }
 
@@ -356,10 +352,8 @@ void hiros::skeletons::Optimizer::changeIdSrv(
     const std::shared_ptr<hiros_skeleton_optimizer::srv::ChangeId::Request> req,
     std::shared_ptr<hiros_skeleton_optimizer::srv::ChangeId::Response> res) {
   if (req->to_id > req->from_id) {
-    RCLCPP_WARN_STREAM(
-        get_logger(),
-        "Hi-ROS Skeleton Optimizer Warning: Track IDs can only be lowered. "
-        "Cannot change");
+    RCLCPP_WARN_STREAM(get_logger(),
+                       "Track IDs can only be lowered. Cannot change");
     res->ok = false;
     return;
   }
@@ -367,9 +361,9 @@ void hiros::skeletons::Optimizer::changeIdSrv(
   if (std::find_if(tracks_.skeletons.begin(), tracks_.skeletons.end(),
                    [&](const auto& sk) { return sk.id == req->from_id; }) ==
       tracks_.skeletons.end()) {
-    RCLCPP_WARN_STREAM(get_logger(),
-                       "Hi-ROS Skeleton Optimizer Warning: Track ID "
-                           << req->from_id << " does not exist. Cannot change");
+    RCLCPP_WARN_STREAM(get_logger(), "Track ID "
+                                         << req->from_id
+                                         << " does not exist. Cannot change");
     res->ok = false;
     return;
   }
@@ -377,16 +371,15 @@ void hiros::skeletons::Optimizer::changeIdSrv(
   if (std::find_if(tracks_.skeletons.begin(), tracks_.skeletons.end(),
                    [&](const auto& sk) { return sk.id == req->to_id; }) !=
       tracks_.skeletons.end()) {
-    RCLCPP_WARN_STREAM(get_logger(),
-                       "Hi-ROS Skeleton Optimizer Warning: Track ID "
-                           << req->to_id << " already exists. Cannot change");
+    RCLCPP_WARN_STREAM(get_logger(), "Track ID "
+                                         << req->to_id
+                                         << " already exists. Cannot change");
     res->ok = false;
     return;
   }
 
-  RCLCPP_WARN_STREAM(get_logger(),
-                     "Hi-ROS Skeleton Optimizer... Change ID from "
-                         << req->from_id << " to " << req->to_id);
+  RCLCPP_INFO_STREAM(get_logger(),
+                     "Change ID from " << req->from_id << " to " << req->to_id);
 
   auto it{
       std::find_if(ids_to_change_.begin(), ids_to_change_.end(),
@@ -409,9 +402,9 @@ void hiros::skeletons::Optimizer::calibrateSrv(
         req,
     std::shared_ptr<hiros_skeleton_optimizer::srv::Calibrate::Response> res) {
   if (acquire_calibration_tracks_) {
-    RCLCPP_WARN_STREAM(get_logger(),
-                       "Hi-ROS Skeleton Optimizer Warning: Cannot start a "
-                       "calibration before finishing the previous one");
+    RCLCPP_WARN_STREAM(
+        get_logger(),
+        "Cannot start a calibration before finishing the previous one");
     res->ok = false;
     return;
   }
@@ -422,9 +415,9 @@ void hiros::skeletons::Optimizer::calibrateSrv(
     if (std::find_if(tracks_.skeletons.begin(), tracks_.skeletons.end(),
                      [&](const auto& sk) { return sk.id == id; }) ==
         tracks_.skeletons.end()) {
-      RCLCPP_WARN_STREAM(get_logger(),
-                         "Hi-ROS Skeleton Optimizer Warning: Track ID "
-                             << id << " does not exist. Cannot calibrate");
+      RCLCPP_WARN_STREAM(
+          get_logger(),
+          "Track ID " << id << " does not exist. Cannot calibrate");
     } else {
       ids_to_calibrate_.push_back(id);
     }
@@ -439,9 +432,8 @@ void hiros::skeletons::Optimizer::calibrateSrv(
   for (const auto& id : ids_to_calibrate_) {
     tracks_to_calibrate_str += " " + std::to_string(id);
   }
-  RCLCPP_INFO_STREAM(
-      get_logger(), "Hi-ROS Skeleton Optimizer... Starting to calibrate tracks:"
-                        << tracks_to_calibrate_str);
+  RCLCPP_INFO_STREAM(get_logger(),
+                     "Start to calibrate tracks:" << tracks_to_calibrate_str);
 
   acquire_calibration_tracks_ = true;
   res->ok = true;
